@@ -15,16 +15,23 @@
 
 use std::num;
 
+use rodio::source;
+use rodio::Source;
+
 use crate::backend::{self, interfaces};
 use crate::defaults;
 
 mod error;
-mod sound;
 
+pub use backend::interfaces::DisplayOptions as Options;
 pub use error::FrontendError;
-pub use sound::Sound;
 
 const INSTRUCTIONS_PER_TICK: u16 = 12;
+
+#[repr(transparent)]
+pub struct Beep {
+    sine: source::SineWave,
+}
 
 #[derive(Clone, Copy)]
 pub struct Colors {
@@ -35,18 +42,52 @@ pub struct Colors {
 pub struct Frontend {
     pub backend: backend::Backend,
     pub colors: Colors,
-    context: egui::Context,
     display_buffer: interfaces::DisplayBuffer,
     display_texture: egui::TextureHandle,
     keyboard: interfaces::KeyboardState,
-    pub options: Options,
-    sound: Sound,
-    stream: rodio::OutputStreamHandle,
+    sink: rodio::Sink,
+    _stream: rodio::OutputStreamHandle,
 }
 
-#[derive(Default)]
-pub struct Options {
-    pub wrap_sprites: bool,
+impl Beep {
+    pub fn new(freq: f32) -> Self {
+        Self {
+            sine: source::SineWave::new(freq),
+        }
+    }
+}
+
+impl Iterator for Beep {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(
+            self.sine.next().unwrap().signum()
+                + self.sine.next().unwrap()
+                + self.sine.next().unwrap()
+                + self.sine.next().unwrap(),
+        )
+    }
+}
+
+impl Source for Beep {
+    #[inline]
+    fn current_frame_len(&self) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn channels(&self) -> u16 {
+        1
+    }
+
+    fn sample_rate(&self) -> u32 {
+        48000
+    }
+
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        None
+    }
 }
 
 impl Colors {
@@ -64,15 +105,22 @@ impl Frontend {
         self.display_texture.id()
     }
 
-    #[inline]
-    pub fn new(ctx: &egui::Context, options: Options, stream: rodio::OutputStreamHandle) -> Self {
+    pub fn new(
+        backend: backend::Backend,
+        ctx: &egui::Context,
+        options: Options,
+        stream: rodio::OutputStreamHandle,
+    ) -> Self {
+        let sink = rodio::Sink::try_new(&stream)
+            .map_err(FrontendError::Audio)
+            .unwrap();
+        sink.pause();
+        sink.append(Beep::new(220.0).stoppable().amplify(0.1));
+
         Self {
             colors: defaults::COLORS,
-            context: ctx.clone(),
-            backend: backend::Backend::new(),
-            display_buffer: backend::interfaces::DisplayBuffer::new(interfaces::DisplayOptions {
-                wrap_sprites: options.wrap_sprites,
-            }),
+            backend,
+            display_buffer: backend::interfaces::DisplayBuffer::new(options),
             display_texture: ctx.load_texture(
                 "Display Texture",
                 egui::ColorImage::new(
@@ -85,9 +133,8 @@ impl Frontend {
                 egui::TextureOptions::default(),
             ),
             keyboard: interfaces::KeyboardState::new(),
-            options,
-            sound: Sound::new().unwrap(),
-            stream,
+            sink,
+            _stream: stream,
         }
     }
 
@@ -95,18 +142,23 @@ impl Frontend {
         self.backend.reset();
         self.display_buffer.clear();
         self.keyboard.release();
+        self.sink.pause();
     }
 
-    pub fn tick(&mut self) -> Result<(), FrontendError> {
+    pub fn suspend(&self) {
+        self.sink.pause()
+    }
+
+    pub fn tick(&mut self, ctx: &egui::Context) -> Result<(), FrontendError> {
         let n = num::NonZeroU16::new(INSTRUCTIONS_PER_TICK).unwrap();
 
-        let sink = match rodio::Sink::try_new(&self.stream) {
-            Ok(sink) => sink,
-            Err(error) => return Err(FrontendError::Audio(error)),
-        };
+        match self.backend.timers.sound {
+            0 => self.sink.pause(),
+            _ => self.sink.play(),
+        }
 
-        if self.backend.timers.sound > 0 {
-            self.sound.play(&sink)
+        for (index, key) in defaults::KEY_MAP.iter().enumerate() {
+            self.keyboard.set(index, ctx.input().key_down(*key));
         }
 
         match self
@@ -121,20 +173,13 @@ impl Frontend {
 
         if self.display_buffer.dirty {
             self.display_buffer.dirty = false;
-
-            self.update_texture();
+            self.update_texture(ctx);
         }
 
         Ok(())
     }
 
-    pub fn update_keyboard_state(&mut self, state: Vec<usize>) {
-        for key in state {
-            self.keyboard.set(key, true);
-        }
-    }
-
-    pub fn update_texture(&mut self) {
+    pub fn update_texture(&mut self, ctx: &egui::Context) {
         let mut pixels: Vec<egui::Color32> =
             Vec::with_capacity(backend::DISPLAY_BUFFER_WIDTH * backend::DISPLAY_BUFFER_HEIGHT);
 
@@ -153,6 +198,6 @@ impl Frontend {
             egui::TextureOptions::NEAREST,
         );
 
-        self.context.request_repaint();
+        ctx.request_repaint();
     }
 }

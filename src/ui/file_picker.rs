@@ -17,11 +17,13 @@ use std::fs;
 use std::io;
 use std::path;
 
+#[repr(transparent)]
 pub struct FilePicker {
     dialog: egui_file::FileDialog,
 }
 
 impl FilePicker {
+    #[inline]
     pub fn is_open(&self) -> bool {
         self.dialog.state() == egui_file::State::Open
     }
@@ -54,6 +56,7 @@ impl FilePicker {
         }
     }
 
+    #[inline]
     pub fn open(&mut self) {
         self.dialog.open();
     }

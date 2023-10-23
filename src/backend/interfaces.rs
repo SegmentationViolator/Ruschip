@@ -25,12 +25,11 @@ pub struct DisplayBuffer {
 }
 
 pub struct DisplayOptions {
-    pub wrap_sprites: bool,
+    pub clip_sprites: bool,
 }
 
-pub struct KeyboardState {
-    state: Vec<bool>,
-}
+#[repr(transparent)]
+pub struct KeyboardState([bool; KEY_COUNT]);
 
 impl DisplayBuffer {
     pub fn clear(&mut self) {
@@ -67,12 +66,12 @@ impl DisplayBuffer {
                     }
                 };
 
-                if !self.options.wrap_sprites && cx == super::DISPLAY_BUFFER_WIDTH - 1 {
+                if self.options.clip_sprites && cx == super::DISPLAY_BUFFER_WIDTH - 1 {
                     break;
                 }
             }
 
-            if !self.options.wrap_sprites && cy == super::DISPLAY_BUFFER_HEIGHT - 1 {
+            if self.options.clip_sprites && cy == super::DISPLAY_BUFFER_HEIGHT - 1 {
                 break;
             }
         }
@@ -82,7 +81,6 @@ impl DisplayBuffer {
         collided
     }
 
-    #[inline]
     pub fn new(options: DisplayOptions) -> Self {
         Self {
             buffer: [bitvec::array::BitArray::ZERO; super::DISPLAY_BUFFER_HEIGHT],
@@ -94,29 +92,26 @@ impl DisplayBuffer {
 
 impl KeyboardState {
     pub fn new() -> Self {
-        Self {
-            state: vec![false; KEY_COUNT],
-        }
+        Self([false; KEY_COUNT])
     }
 
     #[inline]
     pub fn pressed(&self, key: usize) -> bool {
-        self.state[key]
+        self.0[key]
     }
 
     #[inline]
     pub fn pressed_key(&self) -> Option<usize> {
-        let k = self.state.iter().position(|pressed| *pressed);
-        k
+        self.0.iter().position(|pressed| *pressed)
     }
 
     #[inline]
     pub fn release(&mut self) {
-        self.state.fill(false)
+        self.0.fill(false)
     }
 
     #[inline]
     pub fn set(&mut self, key: usize, pressed: bool) {
-        self.state[key] = pressed
+        self.0[key] = pressed
     }
 }

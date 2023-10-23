@@ -39,18 +39,28 @@ pub const STACK_SIZE: usize = 12;
 pub struct Backend {
     index: usize,
     loaded: bool,
-    pub memory: [u8; MEMORY_SIZE],
-    pub registers: Registers,
-    pub stack: Vec<u16>,
+    memory: [u8; MEMORY_SIZE],
+    options: Options,
+    registers: Registers,
+    stack: Vec<u16>,
     pub timers: Timers,
 }
-pub struct Registers {
-    pub address: usize,
-    pub general: [u8; REGISTER_COUNT],
+
+#[derive(Default)]
+pub struct Options {
+    pub copy_and_shift: bool,
+    pub increment_address: bool,
+    pub quirky_jump: bool,
+    pub reset_flag: bool,
+}
+
+struct Registers {
+    address: usize,
+    general: [u8; REGISTER_COUNT],
 }
 
 pub struct Timers {
-    pub delay: u8,
+    delay: u8,
     pub sound: u8,
 }
 
@@ -80,12 +90,12 @@ impl Backend {
         Ok(())
     }
 
-    #[inline]
-    pub fn new() -> Self {
+    pub fn new(options: Options) -> Self {
         Self {
             index: MEMORY_PADDING,
             loaded: false,
             memory: [0; MEMORY_SIZE],
+            options,
             registers: Registers {
                 address: 0,
                 general: [0; REGISTER_COUNT],
@@ -104,10 +114,9 @@ impl Backend {
         self.stack.clear();
 
         self.timers.delay = 0;
-        self.timers.delay = 0;
+        self.timers.sound = 0;
     }
 
-    /// Executes `n` instructions and returns the index of the last instruction executed
     pub fn tick(
         &mut self,
         n: num::NonZeroU16,
@@ -147,8 +156,6 @@ impl Backend {
                     }
 
                     0x0EE => {
-                        if self.stack.is_empty() {}
-
                         match self.stack.pop() {
                             None => {
                                 return Err(BackendError {
@@ -159,6 +166,7 @@ impl Backend {
                             Some(address) => self.index = address as usize,
                         };
                     }
+
                     // Not implementing 0NNN, needs a 1802 or M6800 VM.
                     _ => {}
                 },
@@ -215,23 +223,28 @@ impl Backend {
                     0x1 => {
                         self.registers.general[instruction.operand_x()] |=
                             self.registers.general[instruction.operand_y()];
-                        // TODO: make this toggleable
-                        self.registers.general[15] = 0;
+
+                        if self.options.reset_flag {
+                            self.registers.general[15] = 0;
+                        }
                     }
 
                     0x2 => {
                         self.registers.general[instruction.operand_x()] &=
                             self.registers.general[instruction.operand_y()];
-                        // TODO: make this toggleable
-                        self.registers.general[15] = 0;
+
+                        if self.options.reset_flag {
+                            self.registers.general[15] = 0;
+                        }
                     }
 
                     0x3 => {
                         self.registers.general[instruction.operand_x()] ^=
                             self.registers.general[instruction.operand_y()];
-                        // TODO: make this toggleable
-                        self.registers.general[15] = 0;
 
+                        if self.options.reset_flag {
+                            self.registers.general[15] = 0;
+                        }
                     }
 
                     0x4 => {
@@ -251,8 +264,7 @@ impl Backend {
                             0x5 => {
                                 result = self.registers.general[instruction.operand_x()]
                                     .wrapping_sub(self.registers.general[instruction.operand_y()]);
-                                flag = (self.registers.general
-                                    [instruction.operand_x()]
+                                flag = (self.registers.general[instruction.operand_x()]
                                     > self.registers.general[instruction.operand_y()])
                                     as u8;
                             }
@@ -260,8 +272,7 @@ impl Backend {
                             0x7 => {
                                 result = self.registers.general[instruction.operand_y()]
                                     .wrapping_sub(self.registers.general[instruction.operand_x()]);
-                                flag = (self.registers.general
-                                    [instruction.operand_y()]
+                                flag = (self.registers.general[instruction.operand_y()]
                                     > self.registers.general[instruction.operand_x()])
                                     as u8;
                             }
@@ -277,16 +288,19 @@ impl Backend {
                         let flag;
                         let result;
 
+                        if self.options.copy_and_shift {
+                            self.registers.general[instruction.operand_x()] =
+                                self.registers.general[instruction.operand_y()]
+                        }
+
                         match code {
                             0x6 => {
-                                result = self.registers.general[instruction.operand_y()] >> 1;
-                                flag =
-                                    self.registers.general[instruction.operand_x()] & 1;
+                                result = self.registers.general[instruction.operand_x()] >> 1;
+                                flag = self.registers.general[instruction.operand_x()] & 1;
                             }
                             0xE => {
-                                result = self.registers.general[instruction.operand_y()] << 1;
-                                flag = self.registers.general
-                                    [instruction.operand_x()]
+                                result = self.registers.general[instruction.operand_x()] << 1;
+                                flag = self.registers.general[instruction.operand_x()]
                                     >> (u8::BITS - 1) as u8;
                             }
                             _ => unreachable!(),
@@ -306,7 +320,12 @@ impl Backend {
 
                 0xA => self.registers.address = instruction.operand_nnn(),
 
-                0xB => self.index = self.registers.general[0] as usize + instruction.operand_nnn(),
+                0xB => {
+                    self.index = self.registers.general
+                        [[0, instruction.operand_x()][self.options.quirky_jump as usize]]
+                        as usize
+                        + instruction.operand_nnn()
+                }
 
                 0xC => {
                     self.registers.general[instruction.operand_x()] =
@@ -337,18 +356,18 @@ impl Backend {
                     0x9E => {
                         let key = self.registers.general[instruction.operand_x()] as usize;
 
-                        if !keyboard_state.pressed(key) { break }
+                        if !keyboard_state.pressed(key) {
+                            continue;
+                        }
 
                         self.index += mem::size_of::<instruction::Instruction>();
-                        keyboard_state.set(key, false);
                     }
 
                     0xA1 => {
                         let key = self.registers.general[instruction.operand_x()] as usize;
 
                         if keyboard_state.pressed(key) {
-                            keyboard_state.set(key, false);
-                            break;
+                            continue;
                         }
 
                         self.index += mem::size_of::<instruction::Instruction>();
@@ -365,17 +384,16 @@ impl Backend {
                 0xF => match instruction.operand_nn() {
                     0x07 => self.registers.general[instruction.operand_x()] = self.timers.delay,
 
-                    0x0A => {
-                        match keyboard_state.pressed_key() {
-                            Some(key) => {
-                                self.registers.general[instruction.operand_x()] = key as u8;
-                                keyboard_state.set(key, false);
-                            }
-                            None => self.index = last_index,
+                    0x0A => match keyboard_state.pressed_key() {
+                        Some(key) => {
+                            self.registers.general[instruction.operand_x()] = key as u8;
+                            keyboard_state.set(key, false);
                         }
-
-                        break;
-                    }
+                        None => {
+                            self.index = last_index;
+                            break;
+                        }
+                    },
 
                     0x15 => self.timers.delay = self.registers.general[instruction.operand_x()],
 
@@ -430,7 +448,9 @@ impl Backend {
                             self.memory[self.registers.address + i] = self.registers.general[i];
                         }
 
-                        self.registers.address += x+1;
+                        if self.options.increment_address {
+                            self.registers.address += x + 1;
+                        }
                     }
 
                     0x65 => {
@@ -447,7 +467,9 @@ impl Backend {
                             self.registers.general[i] = self.memory[self.registers.address + i];
                         }
 
-                        self.registers.address += x+1;
+                        if self.options.increment_address {
+                            self.registers.address += x + 1;
+                        }
                     }
 
                     _ => {

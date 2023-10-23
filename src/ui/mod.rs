@@ -20,7 +20,6 @@ use std::time;
 use egui::color_picker;
 
 use crate::backend;
-use crate::defaults;
 use crate::frontend;
 
 mod file_picker;
@@ -62,7 +61,6 @@ enum PathSelection {
 }
 
 struct State {
-    colors: frontend::Colors,
     emulation: Emulation,
     error: Error,
     menu_raised: bool,
@@ -73,31 +71,20 @@ struct State {
 
 impl App {
     fn handle_input(&mut self, ctx: &egui::Context) {
-        if self.state.emulation != Emulation::Stopped {
-            let mut input = ctx.input_mut();
+        if self.state.emulation == Emulation::Stopped {
+            return;
+        }
 
-            if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
-                if !self.state.menu_raised {
-                    self.state.emulation = Emulation::Suspended;
-                    self.state.menu_raised = true;
-                    return;
-                }
-
-                self.state.menu_raised = false;
+        let mut input = ctx.input_mut();
+        if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+            if !self.state.menu_raised {
+                self.frontend.suspend();
+                self.state.emulation = Emulation::Suspended;
+                self.state.menu_raised = true;
                 return;
             }
 
-            if self.state.emulation == Emulation::Running {
-                let mut state = Vec::with_capacity(backend::KEY_COUNT);
-
-                for (index, key) in defaults::KEY_MAP.iter().enumerate() {
-                    if input.key_pressed(*key) {
-                        state.push(index);
-                    }
-                }
-
-                self.frontend.update_keyboard_state(state)
-            }
+            self.state.menu_raised = false;
         }
     }
 
@@ -188,7 +175,7 @@ impl App {
                         menu_item(ui, item_data.0, |ui| {
                             color_picker::color_edit_button_srgba(
                                 ui,
-                                item_data.1.get_color_mut(&mut self.state.colors),
+                                item_data.1.get_color_mut(&mut self.frontend.colors),
                                 color_picker::Alpha::Opaque,
                             );
                         });
@@ -214,6 +201,14 @@ impl App {
                 ui.separator();
 
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    if ui.button("⟲ Reset").clicked() {
+                        self.frontend.reset();
+                        self.state.emulation = Emulation::Running;
+                        self.state.menu_raised = false;
+                    }
+
+                    ui.add_space(MENU_SPACING);
+
                     if ui.button("■ Stop").clicked() {
                         self.state.emulation = Emulation::Stopped;
                     }
@@ -222,7 +217,11 @@ impl App {
         });
     }
 
-    pub fn new(cc: &eframe::CreationContext, options: frontend::Options) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext,
+        backend_options: backend::Options,
+        frontend_options: frontend::Options,
+    ) -> Self {
         let mut visuals = cc.egui_ctx.style().visuals.clone();
 
         visuals.selection.bg_fill = PRIMARY_COLOR;
@@ -237,9 +236,13 @@ impl App {
 
         let (stream, handle) = rodio::OutputStream::try_default().unwrap();
 
-        let frontend = frontend::Frontend::new(&cc.egui_ctx, options, handle);
+        let frontend = frontend::Frontend::new(
+            backend::Backend::new(backend_options),
+            &cc.egui_ctx,
+            frontend_options,
+            handle,
+        );
         let state = State {
-            colors: frontend.colors,
             emulation: Emulation::Stopped,
             error: Error {
                 message: String::with_capacity(128),
@@ -296,6 +299,7 @@ impl App {
                     return;
                 }
             };
+
         let program = match file_picker::FilePicker::load(self.state.program_path.as_ref()) {
             Ok(program) => program.unwrap(),
             Err(error) => {
@@ -310,7 +314,6 @@ impl App {
             }
         };
 
-        self.frontend.colors = self.state.colors;
         self.frontend.reset();
 
         if let Err(error) = self.frontend.backend.load(font, &program) {
@@ -338,12 +341,16 @@ impl eframe::App for App {
         }
 
         ctx.request_repaint_after(TICK_INTERVAL);
-        if let Err(error) = self.frontend.tick() {
+
+        if let Err(error) = self.frontend.tick(ctx) {
             if error.is_fatal() {
                 self.state.error.timestamp = time::Instant::now();
                 self.state.error.message.clear();
                 let _ = write!(self.state.error.message, "fatal error, {}", error);
+
+                self.state.emulation = Emulation::Stopped;
                 ctx.request_repaint();
+                return;
             }
 
             eprintln!("{}", error);
