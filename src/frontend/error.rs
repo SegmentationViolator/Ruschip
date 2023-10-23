@@ -15,7 +15,6 @@
 
 use std::error;
 use std::fmt;
-use std::io;
 
 use crate::backend;
 
@@ -23,7 +22,6 @@ use crate::backend;
 pub enum FrontendError {
     Audio(rodio::PlayError),
     Backend(backend::BackendError),
-    IO(io::Error),
 }
 
 impl FrontendError {
@@ -47,7 +45,6 @@ impl fmt::Display for FrontendError {
         match self {
             Self::Audio(error) => write!(f, "{}", error),
             Self::Backend(error) => write!(f, "{}", error),
-            Self::IO(error) => write!(f, "{}", error),
         }
     }
 }

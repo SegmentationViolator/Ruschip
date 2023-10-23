@@ -15,6 +15,8 @@
 
 use std::num;
 
+use eframe::egui;
+
 use rodio::source;
 use rodio::Source;
 
@@ -157,9 +159,11 @@ impl Frontend {
             _ => self.sink.play(),
         }
 
-        for (index, key) in defaults::KEY_MAP.iter().enumerate() {
-            self.keyboard.set(index, ctx.input().key_down(*key));
-        }
+        ctx.input(|input| {
+            for (index, key) in defaults::KEY_MAP.iter().enumerate() {
+                self.keyboard.set(index, input.key_down(*key));
+            }
+        });
 
         match self
             .backend

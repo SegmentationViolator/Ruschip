@@ -16,8 +16,11 @@
 use clap::Parser;
 
 #[derive(Parser)]
-#[command(about, author, version)]
+#[command(about, version)]
 struct Options {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Clip the sprites drawn beyond the edge of the screen [Default: OFF (wraps the sprites)]
     #[arg(long, default_value_t = true)]
     clip_sprites: bool,
@@ -39,8 +42,50 @@ struct Options {
     reset_flag: bool,
 }
 
-fn main() {
+#[derive(clap::Subcommand)]
+enum Commands {
+    /// Shows license information
+    License,
+
+    /// Shows warranty information
+    Warranty,
+}
+
+fn main() -> Result<(), eframe::Error> {
     let options = Options::parse();
+
+    match options.command {
+        None => (),
+        Some(Commands::License) => {
+            println!(
+                "
+                Ruschip  Copyright (C) 2023  Segmentation Violator
+                This program comes with ABSOLUTELY NO WARRANTY; for details use command `warranty'.
+                This is free software, and you are welcome to redistribute it
+                under certain conditions; see the source code or the GNU General Public License for copying conditions.
+
+                You should have received a copy of the GNU General Public License
+                along with this program.  If not, see <https://www.gnu.org/licenses/>.
+                "
+            );
+            return Ok(());
+        }
+        Some(Commands::Warranty) => {
+            println!(
+                "
+                THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+                APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+                HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY
+                OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+                THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+                PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+                IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+                ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+                "
+            );
+            return Ok(());
+        }
+    }
 
     eframe::run_native(
         "Ruschip",
@@ -63,5 +108,7 @@ fn main() {
                 },
             ))
         }),
-    );
+    )?;
+
+    unreachable!()
 }

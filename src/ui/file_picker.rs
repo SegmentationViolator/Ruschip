@@ -17,6 +17,8 @@ use std::fs;
 use std::io;
 use std::path;
 
+use eframe::egui;
+
 #[repr(transparent)]
 pub struct FilePicker {
     dialog: egui_file::FileDialog,
@@ -50,6 +52,7 @@ impl FilePicker {
     pub fn new() -> Self {
         Self {
             dialog: egui_file::FileDialog::open_file(None)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .resizable(false)
                 .show_new_folder(false)
                 .show_rename(false),
@@ -61,7 +64,7 @@ impl FilePicker {
         self.dialog.open();
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<path::PathBuf> {
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<&path::Path> {
         if self.dialog.show(ctx).selected() {
             return self.dialog.path();
         }

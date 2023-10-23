@@ -17,6 +17,7 @@ use std::fmt::Write;
 use std::path;
 use std::time;
 
+use eframe::egui;
 use egui::color_picker;
 
 use crate::backend;
@@ -75,17 +76,18 @@ impl App {
             return;
         }
 
-        let mut input = ctx.input_mut();
-        if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
-            if !self.state.menu_raised {
-                self.frontend.suspend();
-                self.state.emulation = Emulation::Suspended;
-                self.state.menu_raised = true;
-                return;
-            }
+        ctx.input_mut(|input| {
+            if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+                if !self.state.menu_raised {
+                    self.frontend.suspend();
+                    self.state.emulation = Emulation::Suspended;
+                    self.state.menu_raised = true;
+                    return;
+                }
 
-            self.state.menu_raised = false;
-        }
+                self.state.menu_raised = false;
+            }
+        });
     }
 
     fn menu(&mut self, ctx: &egui::Context) {
@@ -101,8 +103,8 @@ impl App {
 
         if let Some(path) = self.file_picker.show(ctx) {
             match self.state.selection {
-                PathSelection::Font => self.state.font_path.insert(path),
-                PathSelection::Program => self.state.program_path.insert(path),
+                PathSelection::Font => self.state.font_path.insert(path.to_path_buf()),
+                PathSelection::Program => self.state.program_path.insert(path.to_path_buf()),
             };
         }
 

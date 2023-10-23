@@ -1,3 +1,5 @@
+use eframe::egui;
+
 use crate::backend;
 use crate::frontend;
 use crate::ui;
