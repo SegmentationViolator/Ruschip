@@ -12,9 +12,9 @@
 
 ### Emulator Specifications
 - Passes all the tests from [Timendus/chip8-test-suite (v4.0)](https://github.com/Timendus/chip8-test-suite)
-- Runs @ 720 Hz (12 instructions per frame, 60 frames per second)
+- Runs @ 1680 instructions per second
 - The CHIP-8 call stack doesn't have a maximum size limit
-- Follows the standard CHIP-8 specifications; see [this](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.0) and [this](#Issues) for more details
+- Follows the specifications mentioned in [this](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.0)
 
 ### Usage
 checkout `ruschip --help` for usage information
@@ -46,13 +46,11 @@ cargo install --path Ruschip
 ```
 
 For pasting it all at once
-```
+```sh
 git clone https://github.com/SegmentationViolator/Ruschip.git
 cargo install --path Ruschip
 ```
 
 ### Issues
 Known issues:
-- The sound and delay timers might be a bit inconsistent as they depend on the frame rate being 60 fps
-- The emulator is not able to emulate [this](https://johnearnest.github.io/chip8Archive/play.html?p=RPS) rom properly;
-  check [#1](https://github.com/SegmentationViolator/Ruschip/issues/1) for more details
+- The sound and delay timers might be a bit inconsistent as they depend on the frame rate being 60 fps (which might not always be the case)
