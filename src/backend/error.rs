@@ -32,6 +32,7 @@ pub enum BackendErrorKind {
     StackOverflow,
     StackUnderflow,
     UnrecognizedInstruction,
+    UnrecognizedKey,
     UnrecognizedSprite,
 }
 
@@ -61,6 +62,7 @@ impl fmt::Display for BackendErrorKind {
                 Self::StackOverflow => "attempt to call a coroutine when the stack is full",
                 Self::StackUnderflow => "attempt to return when the stack is empty",
                 Self::UnrecognizedInstruction => "unrecognized instruction",
+                Self::UnrecognizedKey => "attempt to access the state of an unrecognized key",
                 Self::UnrecognizedSprite => "attempt to load unrecognized sprite",
             },
         )

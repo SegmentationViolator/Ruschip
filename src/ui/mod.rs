@@ -27,7 +27,7 @@ mod file_picker;
 
 const ERROR_DISPLAY_DURATION: time::Duration = time::Duration::from_secs(2);
 const MENU_SPACING: f32 = 2.5;
-pub(crate) const PRIMARY_COLOR: egui::Color32 = egui::Color32::from_rgb(0x81, 0x5B, 0xA4);   // #815BA4
+pub(crate) const PRIMARY_COLOR: egui::Color32 = egui::Color32::from_rgb(0x81, 0x5B, 0xA4); // #815BA4
 pub(crate) const SECONDARY_COLOR: egui::Color32 = egui::Color32::from_rgb(0x1C, 0x1C, 0x1C); // #1C1C1C
 const TICK_INTERVAL: time::Duration = time::Duration::from_millis(1000 / 60);
 

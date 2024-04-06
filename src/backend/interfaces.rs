@@ -14,8 +14,9 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use bitvec::view::BitViewSized;
+use eframe::egui;
 
-use super::KEY_COUNT;
+use crate::defaults;
 
 pub struct DisplayBuffer {
     pub buffer: [bitvec::BitArr!(for super::DISPLAY_BUFFER_WIDTH, in u64, bitvec::order::Msb0);
@@ -28,8 +29,16 @@ pub struct DisplayOptions {
     pub clip_sprites: bool,
 }
 
-#[repr(transparent)]
-pub struct KeyboardState([bool; KEY_COUNT]);
+pub struct KeypadState {
+    state: [KeyState; super::KEY_COUNT],
+    last_state: [KeyState; super::KEY_COUNT],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KeyState {
+    Held,
+    Released,
+}
 
 impl DisplayBuffer {
     pub fn clear(&mut self) {
@@ -90,28 +99,33 @@ impl DisplayBuffer {
     }
 }
 
-impl KeyboardState {
+impl KeypadState {
     pub fn new() -> Self {
-        Self([false; KEY_COUNT])
+        Self {
+            state: [KeyState::Released; super::KEY_COUNT],
+            last_state: [KeyState::Released; super::KEY_COUNT],
+        }
     }
 
-    #[inline]
     pub fn pressed(&self, key: usize) -> bool {
-        self.0[key]
+        self.state[key] == KeyState::Held
     }
 
-    #[inline]
     pub fn pressed_key(&self) -> Option<usize> {
-        self.0.iter().position(|pressed| *pressed)
+        (0..super::KEY_COUNT)
+            .find(|&i| self.last_state[i] == KeyState::Held && self.state[i] == KeyState::Released)
     }
 
-    #[inline]
-    pub fn release(&mut self) {
-        self.0.fill(false)
-    }
+    pub fn update(&mut self, input: &egui::InputState) {
+        self.last_state.copy_from_slice(&self.state);
 
-    #[inline]
-    pub fn set(&mut self, key: usize, pressed: bool) {
-        self.0[key] = pressed
+        for i in 0..super::KEY_COUNT {
+            if input.key_down(defaults::KEY_MAP[i]) {
+                self.state[i] = KeyState::Held;
+                continue;
+            }
+
+            self.state[i] = KeyState::Released;
+        }
     }
 }

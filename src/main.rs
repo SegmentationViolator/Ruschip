@@ -54,8 +54,6 @@ enum Commands {
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    const ICON: &[u8] = include_bytes!("../assets/Ruschip.png");
-
     let options = Options::parse();
 
     match options.command {
@@ -96,7 +94,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         eframe::NativeOptions {
             drag_and_drop_support: false,
             run_and_return: false,
-            icon_data: Some(eframe::IconData::try_from_png_bytes(ICON)?),
             ..Default::default()
         },
         Box::new(move |cc| {

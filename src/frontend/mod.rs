@@ -13,8 +13,6 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::num;
-
 use eframe::egui;
 
 use rodio::source;
@@ -28,7 +26,9 @@ mod error;
 pub use backend::interfaces::DisplayOptions as Options;
 pub use error::FrontendError;
 
-const INSTRUCTIONS_PER_TICK: u16 = 12;
+const INSTRUCTIONS_PER_TICK: u8 = 28;
+const BUZZ_FREQUENCY: f32 = 220.0;
+const BUZZ_AMPLITUDE: f32 = 10.0;
 
 #[repr(transparent)]
 pub struct Beep {
@@ -46,50 +46,9 @@ pub struct Frontend {
     pub colors: Colors,
     display_buffer: interfaces::DisplayBuffer,
     display_texture: egui::TextureHandle,
-    keyboard: interfaces::KeyboardState,
+    keypad_state: interfaces::KeypadState,
     sink: rodio::Sink,
     _stream: rodio::OutputStreamHandle,
-}
-
-impl Beep {
-    pub fn new(freq: f32) -> Self {
-        Self {
-            sine: source::SineWave::new(freq),
-        }
-    }
-}
-
-impl Iterator for Beep {
-    type Item = f32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(
-            self.sine.next().unwrap().signum()
-                + self.sine.next().unwrap()
-                + self.sine.next().unwrap()
-                + self.sine.next().unwrap(),
-        )
-    }
-}
-
-impl Source for Beep {
-    #[inline]
-    fn current_frame_len(&self) -> Option<usize> {
-        None
-    }
-
-    #[inline]
-    fn channels(&self) -> u16 {
-        1
-    }
-
-    fn sample_rate(&self) -> u32 {
-        48000
-    }
-
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        None
-    }
 }
 
 impl Colors {
@@ -117,7 +76,11 @@ impl Frontend {
             .map_err(FrontendError::Audio)
             .unwrap();
         sink.pause();
-        sink.append(Beep::new(220.0).stoppable().amplify(0.1));
+        sink.append(
+            source::SineWave::new(BUZZ_FREQUENCY)
+                .stoppable()
+                .amplify(BUZZ_AMPLITUDE),
+        );
 
         Self {
             colors: defaults::COLORS,
@@ -134,7 +97,7 @@ impl Frontend {
                 ),
                 egui::TextureOptions::default(),
             ),
-            keyboard: interfaces::KeyboardState::new(),
+            keypad_state: interfaces::KeypadState::new(),
             sink,
             _stream: stream,
         }
@@ -143,7 +106,6 @@ impl Frontend {
     pub fn reset(&mut self) {
         self.backend.reset();
         self.display_buffer.clear();
-        self.keyboard.release();
         self.sink.pause();
     }
 
@@ -152,23 +114,19 @@ impl Frontend {
     }
 
     pub fn tick(&mut self, ctx: &egui::Context) -> Result<(), FrontendError> {
-        let n = num::NonZeroU16::new(INSTRUCTIONS_PER_TICK).unwrap();
-
         match self.backend.timers.sound {
             0 => self.sink.pause(),
             _ => self.sink.play(),
         }
 
         ctx.input(|input| {
-            for (index, key) in defaults::KEY_MAP.iter().enumerate() {
-                self.keyboard.set(index, input.key_down(*key));
-            }
+            self.keypad_state.update(input);
         });
 
-        match self
-            .backend
-            .tick(n, (&mut self.display_buffer, &mut self.keyboard))
-        {
+        match self.backend.tick(
+            INSTRUCTIONS_PER_TICK,
+            (&mut self.display_buffer, &mut self.keypad_state),
+        ) {
             Ok(_) => (),
             Err(error) => {
                 return Err(FrontendError::Backend(error));
@@ -177,18 +135,20 @@ impl Frontend {
 
         if self.display_buffer.dirty {
             self.display_buffer.dirty = false;
-            self.update_texture(ctx);
+            self.update_texture();
         }
 
         Ok(())
     }
 
-    pub fn update_texture(&mut self, ctx: &egui::Context) {
+    pub fn update_texture(&mut self) {
         let mut pixels: Vec<egui::Color32> =
             Vec::with_capacity(backend::DISPLAY_BUFFER_WIDTH * backend::DISPLAY_BUFFER_HEIGHT);
 
-        for pixel in self.display_buffer.buffer.iter().flatten() {
-            pixels.push(self.colors.get(*pixel));
+        for row in self.display_buffer.buffer.iter() {
+            for pixel in row.iter() {
+                pixels.push(self.colors.get(*pixel));
+            }
         }
 
         self.display_texture.set(
@@ -201,7 +161,5 @@ impl Frontend {
             },
             egui::TextureOptions::NEAREST,
         );
-
-        ctx.request_repaint();
     }
 }

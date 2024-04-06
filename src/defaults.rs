@@ -6,7 +6,7 @@ use crate::ui;
 
 pub const COLORS: frontend::Colors = frontend::Colors {
     active: ui::PRIMARY_COLOR,
-    inactive: ui::SECONDARY_COLOR,
+    inactive: egui::Color32::BLACK,
 };
 
 pub const FONT: [u8; backend::FONT_SIZE] = [

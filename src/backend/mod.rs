@@ -14,7 +14,6 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::mem;
-use std::num;
 
 use crate::defaults;
 
@@ -119,10 +118,10 @@ impl Backend {
 
     pub fn tick(
         &mut self,
-        n: num::NonZeroU16,
+        n: u8,
         (display_buffer, keyboard_state): (
             &mut interfaces::DisplayBuffer,
-            &mut interfaces::KeyboardState,
+            &mut interfaces::KeypadState,
         ),
     ) -> Result<(), BackendError> {
         if !self.loaded {
@@ -135,7 +134,7 @@ impl Backend {
         self.timers.delay = self.timers.delay.saturating_sub(1);
         self.timers.sound = self.timers.sound.saturating_sub(1);
 
-        for _ in 0..n.get() {
+        for _ in 0..n {
             if self.index + 1 >= self.memory.len() {
                 return Err(BackendError {
                     instruction: Some((self.index, None)),
@@ -248,12 +247,11 @@ impl Backend {
                     }
 
                     0x4 => {
-                        let result = self.registers.general[instruction.operand_x()] as u16
-                            + self.registers.general[instruction.operand_y()] as u16;
+                        let (result, flag) = self.registers.general[instruction.operand_x()]
+                            .overflowing_add(self.registers.general[instruction.operand_y()]);
 
-                        self.registers.general[instruction.operand_x()] =
-                            (result & u8::MAX as u16) as u8;
-                        self.registers.general[15] = (result > u8::MAX as u16) as u8;
+                        self.registers.general[instruction.operand_x()] = result;
+                        self.registers.general[15] = flag as u8;
                     }
 
                     code @ (0x5 | 0x7) => {
@@ -264,24 +262,22 @@ impl Backend {
                             0x5 => {
                                 result = self.registers.general[instruction.operand_x()]
                                     .wrapping_sub(self.registers.general[instruction.operand_y()]);
-                                flag = (self.registers.general[instruction.operand_x()]
-                                    > self.registers.general[instruction.operand_y()])
-                                    as u8;
+                                flag = self.registers.general[instruction.operand_x()]
+                                    >= self.registers.general[instruction.operand_y()];
                             }
 
                             0x7 => {
                                 result = self.registers.general[instruction.operand_y()]
                                     .wrapping_sub(self.registers.general[instruction.operand_x()]);
-                                flag = (self.registers.general[instruction.operand_y()]
-                                    > self.registers.general[instruction.operand_x()])
-                                    as u8;
+                                flag = self.registers.general[instruction.operand_y()]
+                                    >= self.registers.general[instruction.operand_x()];
                             }
 
                             _ => unreachable!(),
                         }
 
                         self.registers.general[instruction.operand_x()] = result;
-                        self.registers.general[15] = flag;
+                        self.registers.general[15] = flag as u8;
                     }
 
                     code @ (0x6 | 0xE) => {
@@ -350,27 +346,37 @@ impl Backend {
                         &self.memory[self.registers.address
                             ..self.registers.address + instruction.operand_n() as usize],
                     ) as u8;
+
+                    break;
                 }
 
                 0xE => match instruction.operand_nn() {
                     0x9E => {
                         let key = self.registers.general[instruction.operand_x()] as usize;
-
-                        if !keyboard_state.pressed(key) {
-                            continue;
+                        if key >= KEY_COUNT {
+                            return Err(BackendError {
+                                instruction: Some((last_index, Some(instruction))),
+                                kind: BackendErrorKind::UnrecognizedKey,
+                            });
                         }
 
-                        self.index += mem::size_of::<instruction::Instruction>();
+                        if keyboard_state.pressed(key) {
+                            self.index += mem::size_of::<instruction::Instruction>();
+                        }
                     }
 
                     0xA1 => {
                         let key = self.registers.general[instruction.operand_x()] as usize;
-
-                        if keyboard_state.pressed(key) {
-                            continue;
+                        if key >= KEY_COUNT {
+                            return Err(BackendError {
+                                instruction: Some((last_index, Some(instruction))),
+                                kind: BackendErrorKind::UnrecognizedKey,
+                            });
                         }
 
-                        self.index += mem::size_of::<instruction::Instruction>();
+                        if !keyboard_state.pressed(key) {
+                            self.index += mem::size_of::<instruction::Instruction>();
+                        }
                     }
 
                     _ => {
@@ -387,7 +393,6 @@ impl Backend {
                     0x0A => match keyboard_state.pressed_key() {
                         Some(key) => {
                             self.registers.general[instruction.operand_x()] = key as u8;
-                            keyboard_state.set(key, false);
                         }
                         None => {
                             self.index = last_index;
