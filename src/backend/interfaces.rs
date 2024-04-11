@@ -34,6 +34,12 @@ pub struct KeypadState {
     last_state: [KeyState; super::KEY_COUNT],
 }
 
+impl Default for DisplayOptions {
+    fn default() -> Self {
+        Self { clip_sprites: true }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum KeyState {
     Held,

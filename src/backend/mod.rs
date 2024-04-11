@@ -39,13 +39,12 @@ pub struct Backend {
     index: usize,
     loaded: bool,
     memory: [u8; MEMORY_SIZE],
-    options: Options,
+    pub options: Options,
     registers: Registers,
     stack: Vec<u16>,
     pub timers: Timers,
 }
 
-#[derive(Default)]
 pub struct Options {
     pub copy_and_shift: bool,
     pub increment_address: bool,
@@ -495,5 +494,16 @@ impl Backend {
         }
 
         Ok(())
+    }
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            copy_and_shift: true,
+            increment_address: true,
+            quirky_jump: false,
+            reset_flag: true,
+        }
     }
 }

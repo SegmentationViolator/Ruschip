@@ -61,6 +61,13 @@ enum PathSelection {
     Program,
 }
 
+enum QuirkSelection {
+    CopyAndShift,
+    IncrementAddress,
+    QuirkyJump,
+    ResetFlag,
+}
+
 struct State {
     emulation: Emulation,
     error: Error,
@@ -101,6 +108,13 @@ impl App {
             ("Program", PathSelection::Program),
         ];
 
+        const QUIRK_TOGGLES: [(&str, &str, QuirkSelection); 4] = [
+            ("Copy and Shift", "Copy the content of second operand register to the first operand register before shifting", QuirkSelection::CopyAndShift),
+            ("Increment Address", " Increment the address register after executing SAVE and LOAD instructions", QuirkSelection::IncrementAddress),
+            ("Quirky Jump", "The 'jump to some address plus v0' instruction (Bnnn) doesn't use v0, but vX instead where X is the highest nibble of nnn", QuirkSelection::QuirkyJump),
+            ("Reset Flag", "Reset the flag register after executing AND, OR and XOR instructions", QuirkSelection::ResetFlag),
+        ];
+
         if let Some(path) = self.file_picker.show(ctx) {
             match self.state.selection {
                 PathSelection::Font => self.state.font_path.insert(path.to_path_buf()),
@@ -127,9 +141,9 @@ impl App {
                     ui.heading("Backend Parameters");
                     ui.separator();
 
-                    for selector_info in PATH_SELECTORS {
-                        menu_item(ui, selector_info.0, |ui| {
-                            let selected_path = selector_info.1.get_path_mut(&mut self.state);
+                    for item_data in PATH_SELECTORS {
+                        menu_item(ui, item_data.0, |ui| {
+                            let selected_path = item_data.1.get_path_mut(&mut self.state);
 
                             if selected_path.is_some()
                                 && ui
@@ -150,25 +164,57 @@ impl App {
                                 .and_then(|file_name| file_name.to_str());
 
                             ui.colored_label(
-                                egui::Color32::LIGHT_GRAY,
+                                egui::Color32::GRAY,
                                 file_name.unwrap_or("None"),
                             );
                         });
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                             if ui
-                                .selectable_label(false, format!("📂 Load {}", selector_info.0))
+                                .selectable_label(false, format!("📂 Load {}", item_data.0))
                                 .clicked()
                             {
                                 self.state.error.message.clear();
                                 self.file_picker.open();
-                                self.state.selection = selector_info.1;
+                                self.state.selection = item_data.1;
                             }
                         });
 
                         ui.add_space(MENU_SPACING);
                     }
 
-                    ui.add_space(MENU_SPACING.powi(3) - MENU_SPACING);
+                    for item_data in QUIRK_TOGGLES {
+                        menu_item(ui, item_data.0, |ui| {
+                            ui.checkbox(
+                                item_data
+                                    .2
+                                    .get_quirk_mut(&mut self.frontend.backend.options),
+                                "",
+                            );
+                        });
+                        ui.label({
+                            egui::RichText::new(item_data.1)
+                                .color(egui::Color32::GRAY)
+                                .small()
+                        });
+
+                        ui.add_space(MENU_SPACING);
+                    }
+
+                    menu_item(ui, "Clip Sprites", |ui| {
+                        ui.checkbox(
+                            &mut self.frontend.display_buffer.options.clip_sprites,
+                            "",
+                        );
+                    });
+                    ui.label({
+                        egui::RichText::new("Clip the sprites drawn beyond the edge of the screen (wrap around if off)")
+                            .color(egui::Color32::GRAY)
+                            .small()
+                    });
+
+                    ui.add_space(MENU_SPACING);
+
+                    ui.add_space(4.0 * MENU_SPACING);
 
                     ui.heading("Frontend Parameters");
                     ui.separator();
@@ -397,6 +443,17 @@ impl ColorSelection {
         match self {
             Self::Active => &mut colors.active,
             Self::Inactive => &mut colors.inactive,
+        }
+    }
+}
+
+impl QuirkSelection {
+    pub fn get_quirk_mut<'a>(&self, options: &'a mut backend::Options) -> &'a mut bool {
+        match self {
+            Self::CopyAndShift => &mut options.copy_and_shift,
+            Self::IncrementAddress => &mut options.increment_address,
+            Self::QuirkyJump => &mut options.quirky_jump,
+            Self::ResetFlag => &mut options.reset_flag,
         }
     }
 }

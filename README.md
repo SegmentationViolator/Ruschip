@@ -23,9 +23,8 @@ checkout `ruschip --help` for usage information
 
 You might want to use the pre-built binaries provided [here](https://github.com/SegmentationViolator/Ruschip/releases/)
 
-#### Requirements
+#### Requirement
 
-- [mold](https://github.com/rui314/mold) linker
 - rust compiler (rustc) and cargo
 - git or Github cli (gh)
 

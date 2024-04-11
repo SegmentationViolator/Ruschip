@@ -44,7 +44,7 @@ pub struct Colors {
 pub struct Frontend {
     pub backend: backend::Backend,
     pub colors: Colors,
-    display_buffer: interfaces::DisplayBuffer,
+    pub display_buffer: interfaces::DisplayBuffer,
     display_texture: egui::TextureHandle,
     keypad_state: interfaces::KeypadState,
     sink: rodio::Sink,

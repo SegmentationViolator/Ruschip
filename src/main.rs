@@ -22,26 +22,6 @@ use clap::Parser;
 struct Options {
     #[command(subcommand)]
     command: Option<Commands>,
-
-    /// Clip the sprites drawn beyond the edge of the screen [Default: OFF (wraps the sprites)]
-    #[arg(long, default_value_t = true)]
-    clip_sprites: bool,
-
-    /// Copy the content of second operand register to the first operand register before shifting [DEFAULT: ON]
-    #[arg(long, default_value_t = true)]
-    copy_and_shift: bool,
-
-    /// Increment the address register after executing SAVE and LOAD instructions [DEFAULT: ON]
-    #[arg(long, default_value_t = true)]
-    increment_address: bool,
-
-    /// The "jump to some address plus v0" instruction (Bnnn) doesn't use v0, but vX instead where X is the highest nibble of nnn [DEFAULT: OFF]
-    #[arg(long)]
-    quirky_jump: bool,
-
-    /// Reset the flag register after executing AND, OR and XOR instructions [DEFAULT: ON]
-    #[arg(long, default_value_t = true)]
-    reset_flag: bool,
 }
 
 #[derive(clap::Subcommand)]
@@ -99,15 +79,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         Box::new(move |cc| {
             Box::new(ruschip::ui::App::new(
                 cc,
-                ruschip::backend::Options {
-                    copy_and_shift: options.copy_and_shift,
-                    reset_flag: options.reset_flag,
-                    increment_address: options.increment_address,
-                    quirky_jump: options.quirky_jump,
-                },
-                ruschip::frontend::Options {
-                    clip_sprites: options.clip_sprites,
-                },
+                ruschip::backend::Options::default(),
+                ruschip::frontend::Options::default(),
             ))
         }),
     )?;
