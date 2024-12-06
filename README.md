@@ -53,6 +53,6 @@ Known issues:
 - The sound and delay timers might be a bit inconsistent as they depend on the frame rate being 60 fps (which might not always be the case)
 
 ### References
-[Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)
-[Octo - Mastering SuperChip](http://johnearnest.github.io/Octo/docs/SuperChip.html)
-[CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/)
+[Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)  
+[Octo - Mastering SuperChip](http://johnearnest.github.io/Octo/docs/SuperChip.html)  
+[CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/)  
