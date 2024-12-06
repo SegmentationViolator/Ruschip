@@ -13,6 +13,8 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+
 use std::error;
 
 use clap::Parser;
@@ -73,17 +75,17 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         "Ruschip",
         eframe::NativeOptions {
             drag_and_drop_support: false,
-            run_and_return: false,
+            icon_data: Some(eframe::IconData::try_from_png_bytes(ICON_PNG)?),
+            run_and_return: true,
             ..Default::default()
         },
         Box::new(move |cc| {
             Box::new(ruschip::ui::App::new(
                 cc,
-                ruschip::backend::Options::default(),
-                ruschip::frontend::Options::default(),
+                ruschip::backend::Backend::default(),
             ))
         }),
     )?;
 
-    unreachable!()
+    unreachable!();
 }

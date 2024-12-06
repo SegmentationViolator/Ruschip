@@ -26,6 +26,7 @@ pub struct BackendError {
 
 #[derive(Debug)]
 pub enum BackendErrorKind {
+    DisplayNotConnected,
     MemoryOverflow,
     ProgramInvalid,
     ProgramNotLoaded,
@@ -56,6 +57,7 @@ impl fmt::Display for BackendErrorKind {
             f,
             "{}",
             match self {
+                Self::DisplayNotConnected => "[internal error/bug] attempt to run an instruction that uses the display without connecting the display",
                 Self::MemoryOverflow => "attempt to access invalid memory address",
                 Self::ProgramInvalid => "attempt to load invalid program",
                 Self::ProgramNotLoaded => "attempt to run without loading any program",

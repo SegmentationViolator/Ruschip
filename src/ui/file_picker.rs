@@ -53,7 +53,6 @@ impl FilePicker {
         Self {
             dialog: egui_file::FileDialog::open_file(None)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .resizable(false)
                 .show_new_folder(false)
                 .show_rename(false),
         }

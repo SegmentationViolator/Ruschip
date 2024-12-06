@@ -18,10 +18,10 @@ use eframe::egui;
 
 use crate::defaults;
 
-pub struct DisplayBuffer {
-    pub buffer: [bitvec::BitArr!(for super::DISPLAY_BUFFER_WIDTH, in u64, bitvec::order::Msb0);
-        super::DISPLAY_BUFFER_HEIGHT],
-    pub dirty: bool,
+pub(super) struct DisplayBuffer<const W: usize, const H: usize> {
+    buffer: [[bool; W]; H],
+    dirty: bool,
+    pub(super) half_resolution: bool,
     pub options: DisplayOptions,
 }
 
@@ -34,19 +34,18 @@ pub struct KeypadState {
     last_state: [KeyState; super::KEY_COUNT],
 }
 
-impl Default for DisplayOptions {
-    fn default() -> Self {
-        Self { clip_sprites: true }
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum KeyState {
     Held,
     Released,
 }
 
-impl DisplayBuffer {
+impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
+    pub fn get(&mut self) -> Vec<bool> {
+        self.dirty = false;
+        self.buffer.iter().copied().flatten().collect()
+    }
+
     pub fn clear(&mut self) {
         for row in self.buffer.iter_mut() {
             row.fill(false);
@@ -55,51 +54,118 @@ impl DisplayBuffer {
         self.dirty = true;
     }
 
-    pub fn draw(&mut self, coordinates: (usize, usize), sprite: &[u8]) -> bool {
-        let coordinates = (
-            coordinates.0 % super::DISPLAY_BUFFER_WIDTH,
-            coordinates.1 % super::DISPLAY_BUFFER_HEIGHT,
-        );
+    pub fn draw(&mut self, coordinates: (usize, usize), sprite: &[u8]) -> usize {
+        if sprite.len() == 32 && !self.half_resolution {
+            let mut sprite_16x16 = Vec::with_capacity(16);
+            for i in 0..16 {
+                sprite_16x16.push(u16::from_be_bytes([sprite[2 * i], sprite[2 * i + 1]]))
+            }
 
-        let mut collided = false;
+            return self.draw_16x16(coordinates, &sprite_16x16);
+        }
+
+        let scaling_factor = if self.half_resolution { 2 } else { 1 };
+
+        let coordinates = (coordinates.0 * scaling_factor % W, coordinates.1 * scaling_factor % H);
+        let mut colliding_rows = 0;
 
         for (y, byte) in sprite.iter().enumerate() {
-            let cy = (coordinates.1 + y) % super::DISPLAY_BUFFER_HEIGHT;
+            let cy = coordinates.1 + y * scaling_factor;
+
+            if self.options.clip_sprites && cy == H {
+                colliding_rows += sprite.len() - y;
+                break;
+            }
+
+            let cy = cy % H;
+            let mut collided = false;
 
             for (x, bit) in byte
                 .into_bitarray::<bitvec::order::Msb0>()
                 .iter()
                 .enumerate()
             {
-                let cx = (coordinates.0 + x) % super::DISPLAY_BUFFER_WIDTH;
+                let cx = coordinates.0 + x * scaling_factor;
 
-                if *bit {
-                    let mut pixel = self.buffer[cy].get_mut(cx).unwrap();
-
-                    if pixel.replace(!*pixel) {
-                        collided = true;
-                    }
-                };
-
-                if self.options.clip_sprites && cx == super::DISPLAY_BUFFER_WIDTH - 1 {
+                if self.options.clip_sprites && cx == W {
                     break;
                 }
+
+                let cx = cx % W;
+
+                if *bit {
+                    if !self.half_resolution {
+                        self.buffer[cy][cx] ^= true;
+                        collided |= !(self.buffer[cy][cx]);
+                        continue;
+                    }
+
+                    for i in cy..=cy + 1 {
+                        for j in cx..=cx + 1 {
+                            self.buffer[i][j] ^= true;
+                            collided |= !(self.buffer[i][j])
+                        }
+                    }
+                };
             }
 
-            if self.options.clip_sprites && cy == super::DISPLAY_BUFFER_HEIGHT - 1 {
-                break;
-            }
+            colliding_rows += collided as usize;
         }
-
         self.dirty = true;
 
-        collided
+        colliding_rows
+    }
+
+    pub fn draw_16x16(&mut self, coordinates: (usize, usize), sprite: &[u16]) -> usize {
+        let coordinates = (coordinates.0 % W, coordinates.1 % H);
+        let mut colliding_rows = 0;
+
+        for (y, row) in sprite.iter().enumerate() {
+            let cy = coordinates.1 + y;
+
+            if self.options.clip_sprites && cy == H {
+                colliding_rows += sprite.len() - y;
+                break;
+            }
+
+            let cy = cy % H;
+            let mut collided = false;
+
+            for (x, bit) in row
+                .into_bitarray::<bitvec::order::Msb0>()
+                .iter()
+                .enumerate()
+            {
+                let cx = coordinates.0 + x;
+
+                if self.options.clip_sprites && cx == W {
+                    break;
+                }
+
+                let cx = cx % W;
+
+                if *bit {
+                    self.buffer[cy][cx] ^= true;
+                    collided |= !self.buffer[cy][cx];
+                };
+            }
+
+            colliding_rows += collided as usize;
+        }
+        self.dirty = true;
+
+        colliding_rows
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
     pub fn new(options: DisplayOptions) -> Self {
         Self {
-            buffer: [bitvec::array::BitArray::ZERO; super::DISPLAY_BUFFER_HEIGHT],
+            buffer: [[false; W]; H],
             dirty: false,
+            half_resolution: false,
             options,
         }
     }

@@ -32,6 +32,7 @@ impl FrontendError {
                 backend::BackendErrorKind::MemoryOverflow
                     | backend::BackendErrorKind::ProgramInvalid
                     | backend::BackendErrorKind::ProgramNotLoaded
+                    | backend::BackendErrorKind::DisplayNotConnected
             ),
             _ => true,
         }

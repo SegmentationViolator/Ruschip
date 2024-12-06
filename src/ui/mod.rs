@@ -39,6 +39,12 @@ pub struct App {
     state: State,
 }
 
+#[derive(PartialEq, Eq)]
+enum BackendSelection {
+    Chip8,
+    SuperChip,
+}
+
 enum ColorSelection {
     Active,
     Inactive,
@@ -56,6 +62,13 @@ enum Emulation {
     Suspended,
 }
 
+#[derive(PartialEq, Eq)]
+enum Menu {
+    BackendSelection,
+    Configuration,
+    Inactive,
+}
+
 enum PathSelection {
     Font,
     Program,
@@ -71,33 +84,91 @@ enum QuirkSelection {
 struct State {
     emulation: Emulation,
     error: Error,
-    menu_raised: bool,
+    menu: Menu,
     font_path: Option<path::PathBuf>,
     program_path: Option<path::PathBuf>,
-    selection: PathSelection,
+    path_selection: PathSelection,
 }
 
 impl App {
     fn handle_input(&mut self, ctx: &egui::Context) {
-        if self.state.emulation == Emulation::Stopped {
-            return;
-        }
-
         ctx.input_mut(|input| {
             if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
-                if !self.state.menu_raised {
+                if self.state.menu == Menu::Inactive {
                     self.frontend.suspend();
                     self.state.emulation = Emulation::Suspended;
-                    self.state.menu_raised = true;
+                    self.state.menu = Menu::Configuration;
                     return;
                 }
 
-                self.state.menu_raised = false;
+                self.state.emulation = Emulation::Running;
+                self.state.menu = Menu::Inactive;
+                return;
+            }
+
+            if self.state.menu == Menu::Inactive && input.consume_key(egui::Modifiers::NONE, egui::Key::Space) {
+                if self.state.emulation == Emulation::Running {
+                    self.frontend.suspend();
+                    self.state.emulation = Emulation::Suspended;
+                    return;
+                }
+
+                self.state.emulation = Emulation::Running;
+                return;
             }
         });
     }
 
-    fn menu(&mut self, ctx: &egui::Context) {
+    fn backend_selection_menu(&mut self, ctx: &egui::Context) {
+        const BACKENDS: [(&str, &str, BackendSelection); 2] = [
+            (
+                "CHIP-8",
+                "The original CHIP-8 interpreter",
+                BackendSelection::Chip8,
+            ),
+            (
+                "SUPER-CHIP",
+                "A backwards-compatible extended version of CHIP-8 with higher resolution mode and new instructions",
+                BackendSelection::SuperChip,
+            ),
+        ];
+
+        let current_selection = BackendSelection::get(&self.frontend.backend);
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| {
+                    ui.heading("Backends");
+                    ui.separator();
+                    for item_data in BACKENDS {
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                            if ui
+                                .selectable_label(
+                                    false,
+                                    egui::RichText::new(item_data.0)
+                                        .color(PRIMARY_COLOR)
+                                        .heading(),
+                                )
+                                .clicked()
+                            {
+                                if current_selection != item_data.2 {
+                                    self.frontend.backend = item_data.2.into_backend();
+                                }
+                                self.state.menu = Menu::Configuration;
+                            }
+                            ui.label({
+                                egui::RichText::new(item_data.1)
+                                    .color(egui::Color32::GRAY)
+                                    .small()
+                            });
+                        });
+                    }
+                })
+        });
+    }
+
+    fn configuration_menu(&mut self, ctx: &egui::Context) {
         const COLOR_PICKERS: [(&str, ColorSelection); 2] = [
             ("Active Color", ColorSelection::Active),
             ("Inactive Color", ColorSelection::Inactive),
@@ -116,160 +187,164 @@ impl App {
         ];
 
         if let Some(path) = self.file_picker.show(ctx) {
-            match self.state.selection {
+            match self.state.path_selection {
                 PathSelection::Font => self.state.font_path.insert(path.to_path_buf()),
                 PathSelection::Program => self.state.program_path.insert(path.to_path_buf()),
             };
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_enabled_ui(
-                self.state.emulation == Emulation::Stopped && !self.file_picker.is_open(),
-                |ui| {
-                    ui.add_visible_ui(
-                        !self.state.error.message.is_empty()
-                            && self.state.error.timestamp.elapsed() < ERROR_DISPLAY_DURATION,
+            egui::ScrollArea::vertical()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| {
+                    ui.add_enabled_ui(
+                        self.state.emulation == Emulation::Stopped && !self.file_picker.is_open(),
                         |ui| {
-                            ui.vertical_centered_justified(|ui| {
-                                ui.colored_label(egui::Color32::RED, &self.state.error.message)
+                            if ui.button("↩").clicked() {
+                                self.state.menu = Menu::BackendSelection;
+                            }
+
+                            ui.add_visible_ui(
+                                !self.state.error.message.is_empty()
+                                    && self.state.error.timestamp.elapsed() < ERROR_DISPLAY_DURATION,
+                                |ui| {
+                                    ui.vertical_centered_justified(|ui| {
+                                        ui.colored_label(egui::Color32::RED, &self.state.error.message)
+                                    });
+
+                                    ctx.request_repaint_after(ERROR_DISPLAY_DURATION);
+                                },
+                            );
+
+                            ui.heading("Backend Parameters");
+                            ui.separator();
+
+                            for item_data in PATH_SELECTORS {
+                                menu_item(ui, item_data.0, |ui| {
+                                    let selected_path = item_data.1.get_path_mut(&mut self.state);
+
+                                    if selected_path.is_some()
+                                        && ui
+                                            .add(
+                                                egui::Label::new(
+                                                    egui::RichText::new("×").color(PRIMARY_COLOR),
+                                                )
+                                                .sense(egui::Sense::click()),
+                                            )
+                                            .clicked()
+                                    {
+                                        *selected_path = None;
+                                    }
+
+                                    let file_name = selected_path
+                                        .as_ref()
+                                        .and_then(|path| path.file_name())
+                                        .and_then(|file_name| file_name.to_str());
+
+                                    ui.colored_label(
+                                        egui::Color32::GRAY,
+                                        file_name.unwrap_or("None"),
+                                    );
+                                });
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                    if ui
+                                        .selectable_label(false, format!("📂 Load {}", item_data.0))
+                                        .clicked()
+                                    {
+                                        self.state.error.message.clear();
+                                        self.file_picker.open();
+                                        self.state.path_selection = item_data.1;
+                                    }
+                                });
+
+                                ui.add_space(MENU_SPACING);
+                            }
+
+                            for item_data in QUIRK_TOGGLES {
+                                menu_item(ui, item_data.0, |ui| {
+                                    ui.checkbox(
+                                        item_data
+                                            .2
+                                            .get_quirk_mut(self.frontend.backend.options_mut()),
+                                        "",
+                                    );
+                                });
+                                ui.label({
+                                    egui::RichText::new(item_data.1)
+                                        .color(egui::Color32::GRAY)
+                                        .small()
+                                });
+
+                                ui.add_space(MENU_SPACING);
+                            }
+
+                            menu_item(ui, "Clip Sprites", |ui| {
+                                ui.checkbox(
+                                    &mut self.frontend.backend.display_options_mut().clip_sprites,
+                                    "",
+                                );
+                            });
+                            ui.label({
+                                egui::RichText::new("Clip the sprites drawn beyond the edge of the screen (wrap around if off)")
+                                    .color(egui::Color32::GRAY)
+                                    .small()
                             });
 
-                            ctx.request_repaint_after(ERROR_DISPLAY_DURATION);
+                            ui.add_space(MENU_SPACING);
+
+                            ui.add_space(4.0 * MENU_SPACING);
+
+                            ui.heading("Frontend Parameters");
+                            ui.separator();
+
+                            for item_data in COLOR_PICKERS {
+                                menu_item(ui, item_data.0, |ui| {
+                                    color_picker::color_edit_button_srgba(
+                                        ui,
+                                        item_data.1.get_color_mut(&mut self.frontend.colors),
+                                        color_picker::Alpha::Opaque,
+                                    );
+                                });
+
+                                ui.add_space(MENU_SPACING);
+                            }
+
+                            if self.state.program_path.is_some()
+                                && self.state.emulation == Emulation::Stopped
+                            {
+                                ui.separator();
+
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                    if ui.button("▶ Start").clicked() {
+                                        self.start();
+                                    }
+                                });
+                            }
                         },
                     );
 
-                    ui.heading("Backend Parameters");
-                    ui.separator();
-
-                    for item_data in PATH_SELECTORS {
-                        menu_item(ui, item_data.0, |ui| {
-                            let selected_path = item_data.1.get_path_mut(&mut self.state);
-
-                            if selected_path.is_some()
-                                && ui
-                                    .add(
-                                        egui::Label::new(
-                                            egui::RichText::new("×").color(PRIMARY_COLOR),
-                                        )
-                                        .sense(egui::Sense::click()),
-                                    )
-                                    .clicked()
-                            {
-                                *selected_path = None;
-                            }
-
-                            let file_name = selected_path
-                                .as_ref()
-                                .and_then(|path| path.file_name())
-                                .and_then(|file_name| file_name.to_str());
-
-                            ui.colored_label(
-                                egui::Color32::GRAY,
-                                file_name.unwrap_or("None"),
-                            );
-                        });
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                            if ui
-                                .selectable_label(false, format!("📂 Load {}", item_data.0))
-                                .clicked()
-                            {
-                                self.state.error.message.clear();
-                                self.file_picker.open();
-                                self.state.selection = item_data.1;
-                            }
-                        });
-
-                        ui.add_space(MENU_SPACING);
-                    }
-
-                    for item_data in QUIRK_TOGGLES {
-                        menu_item(ui, item_data.0, |ui| {
-                            ui.checkbox(
-                                item_data
-                                    .2
-                                    .get_quirk_mut(&mut self.frontend.backend.options),
-                                "",
-                            );
-                        });
-                        ui.label({
-                            egui::RichText::new(item_data.1)
-                                .color(egui::Color32::GRAY)
-                                .small()
-                        });
-
-                        ui.add_space(MENU_SPACING);
-                    }
-
-                    menu_item(ui, "Clip Sprites", |ui| {
-                        ui.checkbox(
-                            &mut self.frontend.display_buffer.options.clip_sprites,
-                            "",
-                        );
-                    });
-                    ui.label({
-                        egui::RichText::new("Clip the sprites drawn beyond the edge of the screen (wrap around if off)")
-                            .color(egui::Color32::GRAY)
-                            .small()
-                    });
-
-                    ui.add_space(MENU_SPACING);
-
-                    ui.add_space(4.0 * MENU_SPACING);
-
-                    ui.heading("Frontend Parameters");
-                    ui.separator();
-
-                    for item_data in COLOR_PICKERS {
-                        menu_item(ui, item_data.0, |ui| {
-                            color_picker::color_edit_button_srgba(
-                                ui,
-                                item_data.1.get_color_mut(&mut self.frontend.colors),
-                                color_picker::Alpha::Opaque,
-                            );
-                        });
-
-                        ui.add_space(MENU_SPACING);
-                    }
-
-                    if self.state.program_path.is_some()
-                        && self.state.emulation == Emulation::Stopped
-                    {
+                    if self.state.emulation != Emulation::Stopped {
                         ui.separator();
 
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                            if ui.button("▶ Start").clicked() {
-                                self.start();
+                            if ui.button("⟲ Reset").clicked() {
+                                self.frontend.reset();
+                                self.state.emulation = Emulation::Running;
+                                self.state.menu = Menu::Inactive;
+                            }
+
+                            ui.add_space(MENU_SPACING);
+
+                            if ui.button("■ Stop").clicked() {
+                                self.state.emulation = Emulation::Stopped;
                             }
                         });
                     }
-                },
-            );
-
-            if self.state.emulation != Emulation::Stopped {
-                ui.separator();
-
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                    if ui.button("⟲ Reset").clicked() {
-                        self.frontend.reset();
-                        self.state.emulation = Emulation::Running;
-                        self.state.menu_raised = false;
-                    }
-
-                    ui.add_space(MENU_SPACING);
-
-                    if ui.button("■ Stop").clicked() {
-                        self.state.emulation = Emulation::Stopped;
-                    }
-                });
-            }
+            });
         });
     }
 
-    pub fn new(
-        cc: &eframe::CreationContext,
-        backend_options: backend::Options,
-        frontend_options: frontend::Options,
-    ) -> Self {
+    pub fn new(cc: &eframe::CreationContext, backend: backend::Backend) -> Self {
         let mut visuals = cc.egui_ctx.style().visuals.clone();
 
         visuals.selection.bg_fill = PRIMARY_COLOR;
@@ -284,22 +359,17 @@ impl App {
 
         let (stream, handle) = rodio::OutputStream::try_default().unwrap();
 
-        let frontend = frontend::Frontend::new(
-            backend::Backend::new(backend_options),
-            &cc.egui_ctx,
-            frontend_options,
-            handle,
-        );
+        let frontend = frontend::Frontend::new(backend, &cc.egui_ctx, handle);
         let state = State {
             emulation: Emulation::Stopped,
             error: Error {
                 message: String::with_capacity(128),
                 timestamp: time::Instant::now(),
             },
-            menu_raised: false,
+            menu: Menu::BackendSelection,
             font_path: None,
             program_path: None,
-            selection: PathSelection::Font,
+            path_selection: PathSelection::Font,
         };
 
         Self {
@@ -314,14 +384,9 @@ impl App {
     pub fn start(&mut self) {
         self.state.error.message.clear();
 
-        let boxed;
-        let font: Option<&[u8; backend::FONT_SIZE]> =
+        let font: Option<Vec<u8>> =
             match file_picker::FilePicker::load(self.state.font_path.as_ref()) {
-                Ok(Some(font)) if font.len() == backend::FONT_SIZE => {
-                    boxed = font.into_boxed_slice(); // store the boxed slice so that it is not dropped immediately
-
-                    Some(boxed.as_ref().try_into().unwrap())
-                }
+                Ok(Some(font)) if font.len() >= backend::MIN_FONT_SIZE => Some(font),
 
                 Ok(Some(_)) => {
                     self.state.font_path = None;
@@ -364,7 +429,7 @@ impl App {
 
         self.frontend.reset();
 
-        if let Err(error) = self.frontend.backend.load(font, &program) {
+        if let Err(error) = self.frontend.backend.load(font.as_deref(), &program) {
             self.state.program_path = None;
             self.state.error.timestamp = time::Instant::now();
             let _ = write!(
@@ -376,39 +441,53 @@ impl App {
         };
 
         self.state.emulation = Emulation::Running;
-        self.state.menu_raised = false;
+        self.state.menu = Menu::Inactive;
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.handle_input(ctx);
-
-        if self.state.emulation == Emulation::Stopped || self.state.menu_raised {
-            return self.menu(ctx);
+        if self.state.emulation != Emulation::Stopped {
+            self.handle_input(ctx);
         }
 
-        ctx.request_repaint_after(TICK_INTERVAL);
+        match self.state.menu {
+            Menu::BackendSelection => return self.backend_selection_menu(ctx),
+            Menu::Configuration => return self.configuration_menu(ctx),
+            Menu::Inactive => (),
+        }
 
-        if let Err(error) = self.frontend.tick(ctx) {
-            if error.is_fatal() {
-                self.state.error.timestamp = time::Instant::now();
-                self.state.error.message.clear();
-                let _ = write!(self.state.error.message, "fatal error, {}", error);
+        if self.state.emulation == Emulation::Running {
+            ctx.request_repaint_after(TICK_INTERVAL);
 
+            if let Err(error) = self.frontend.tick(ctx) {
+                if error.is_fatal() {
+                    self.state.error.timestamp = time::Instant::now();
+                    self.state.error.message.clear();
+                    let _ = write!(self.state.error.message, "fatal error, {}", error);
+
+                    self.state.emulation = Emulation::Stopped;
+                    self.state.menu = Menu::Configuration;
+                    ctx.request_repaint();
+                    return;
+                }
+
+                eprintln!("{}", error);
+            }
+
+            if self.frontend.backend.program_exited() {
                 self.state.emulation = Emulation::Stopped;
+                self.state.menu = Menu::Configuration;
                 ctx.request_repaint();
                 return;
             }
-
-            eprintln!("{}", error);
         }
 
         let window_size = frame.info().window_info.size;
         let size;
         let margin;
 
-        if window_size[0] / window_size[1] <= backend::DISPLAY_BUFFER_ASPECT_RATIO
+        if window_size[0] / window_size[1] <= self.frontend.backend.display_buffer_aspect_ratio()
             && window_size[0] > window_size[1]
         {
             size = window_size;
@@ -416,7 +495,7 @@ impl eframe::App for App {
         } else {
             size = egui::vec2(
                 window_size[0],
-                window_size[0] / backend::DISPLAY_BUFFER_ASPECT_RATIO,
+                window_size[0] / self.frontend.backend.display_buffer_aspect_ratio(),
             );
             margin = egui::style::Margin::symmetric(0.0, (window_size[1] - size[1]) / 2.0);
         };
@@ -429,11 +508,18 @@ impl eframe::App for App {
     }
 }
 
-impl PathSelection {
-    pub fn get_path_mut<'a>(&self, state: &'a mut State) -> &'a mut Option<path::PathBuf> {
+impl BackendSelection {
+    pub fn get(backend: &backend::Backend) -> Self {
+        match backend {
+            backend::Backend::Chip8(..) => Self::Chip8,
+            backend::Backend::SuperChip(..) => Self::SuperChip,
+        }
+    }
+
+    pub fn into_backend(&self) -> backend::Backend {
         match self {
-            Self::Font => &mut state.font_path,
-            Self::Program => &mut state.program_path,
+            Self::Chip8 => backend::Backend::Chip8(Default::default()),
+            Self::SuperChip => backend::Backend::SuperChip(Default::default()),
         }
     }
 }
@@ -443,6 +529,15 @@ impl ColorSelection {
         match self {
             Self::Active => &mut colors.active,
             Self::Inactive => &mut colors.inactive,
+        }
+    }
+}
+
+impl PathSelection {
+    pub fn get_path_mut<'a>(&self, state: &'a mut State) -> &'a mut Option<path::PathBuf> {
+        match self {
+            Self::Font => &mut state.font_path,
+            Self::Program => &mut state.program_path,
         }
     }
 }

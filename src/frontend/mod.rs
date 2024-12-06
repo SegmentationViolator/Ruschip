@@ -23,7 +23,6 @@ use crate::defaults;
 
 mod error;
 
-pub use backend::interfaces::DisplayOptions as Options;
 pub use error::FrontendError;
 
 const INSTRUCTIONS_PER_TICK: u8 = 28;
@@ -44,7 +43,6 @@ pub struct Colors {
 pub struct Frontend {
     pub backend: backend::Backend,
     pub colors: Colors,
-    pub display_buffer: interfaces::DisplayBuffer,
     display_texture: egui::TextureHandle,
     keypad_state: interfaces::KeypadState,
     sink: rodio::Sink,
@@ -69,7 +67,6 @@ impl Frontend {
     pub fn new(
         backend: backend::Backend,
         ctx: &egui::Context,
-        options: Options,
         stream: rodio::OutputStreamHandle,
     ) -> Self {
         let sink = rodio::Sink::try_new(&stream)
@@ -84,19 +81,12 @@ impl Frontend {
 
         Self {
             colors: defaults::COLORS,
-            backend,
-            display_buffer: backend::interfaces::DisplayBuffer::new(options),
             display_texture: ctx.load_texture(
                 "Display Texture",
-                egui::ColorImage::new(
-                    [
-                        backend::DISPLAY_BUFFER_WIDTH,
-                        backend::DISPLAY_BUFFER_HEIGHT,
-                    ],
-                    defaults::COLORS.inactive,
-                ),
+                egui::ColorImage::new(backend.display_buffer_size(), defaults::COLORS.inactive),
                 egui::TextureOptions::default(),
             ),
+            backend,
             keypad_state: interfaces::KeypadState::new(),
             sink,
             _stream: stream,
@@ -105,7 +95,6 @@ impl Frontend {
 
     pub fn reset(&mut self) {
         self.backend.reset();
-        self.display_buffer.clear();
         self.sink.pause();
     }
 
@@ -114,7 +103,7 @@ impl Frontend {
     }
 
     pub fn tick(&mut self, ctx: &egui::Context) -> Result<(), FrontendError> {
-        match self.backend.timers.sound {
+        match self.backend.timers().sound {
             0 => self.sink.pause(),
             _ => self.sink.play(),
         }
@@ -123,43 +112,41 @@ impl Frontend {
             self.keypad_state.update(input);
         });
 
-        match self.backend.tick(
-            INSTRUCTIONS_PER_TICK,
-            (&mut self.display_buffer, &mut self.keypad_state),
-        ) {
+        match self
+            .backend
+            .tick(INSTRUCTIONS_PER_TICK, &mut self.keypad_state)
+        {
             Ok(_) => (),
             Err(error) => {
                 return Err(FrontendError::Backend(error));
             }
         }
 
-        if self.display_buffer.dirty {
-            self.display_buffer.dirty = false;
-            self.update_texture();
+        if self.backend.is_display_buffer_dirty() {
+            self.update_texture()?;
         }
 
         Ok(())
     }
 
-    pub fn update_texture(&mut self) {
-        let mut pixels: Vec<egui::Color32> =
-            Vec::with_capacity(backend::DISPLAY_BUFFER_WIDTH * backend::DISPLAY_BUFFER_HEIGHT);
-
-        for row in self.display_buffer.buffer.iter() {
-            for pixel in row.iter() {
-                pixels.push(self.colors.get(*pixel));
-            }
-        }
+    pub fn update_texture(&mut self) -> Result<(), FrontendError> {
+        let pixels: Vec<egui::Color32> = self
+            .backend
+            .display_buffer()
+            .map_err(|error| FrontendError::Backend(error))?
+            .iter()
+            .copied()
+            .map(|pixel| self.colors.get(pixel))
+            .collect();
 
         self.display_texture.set(
             egui::ColorImage {
-                size: [
-                    backend::DISPLAY_BUFFER_WIDTH,
-                    backend::DISPLAY_BUFFER_HEIGHT,
-                ],
+                size: self.backend.display_buffer_size(),
                 pixels,
             },
             egui::TextureOptions::NEAREST,
         );
+
+        Ok(())
     }
 }
