@@ -1,6 +1,6 @@
 [package]
 name = "ruschip"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Segmentation Violator <segmentationviolator@proton.me>"]
 edition = "2021"
 description = "a multi-variant CHIP-8 emulator"
@@ -8,11 +8,11 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 bitvec = { version = "1.0.1", default-features = false }
-clap = { version = "4.2.4", features = ["derive"] }
-eframe = { version = "0.22.0", default_features = false, features = ["default_fonts", "glow"] }
+dirs = "5.0.1"
+eframe = { version = "0.22.0", default-features = false, features = ["default_fonts", "glow"] }
 egui_file = "0.10.2"
 rand = "0.8.5"
-rodio = { version = "0.17.0", default_features = false }
+rodio = { version = "0.17.0", default-features = false }
 
 [profile.release]
 opt-level = 3

@@ -22,9 +22,11 @@ pub mod super_chip;
 pub use error::{BackendError, BackendErrorKind};
 pub use instruction::Instruction;
 
+pub use chip8::FONT_SIZE as MIN_FONT_SIZE;
+pub use super_chip::FONT_SIZE as MAX_FONT_SIZE;
+pub use super_chip::PERSISTENT_STORAGE_SIZE;
+
 pub const KEY_COUNT: usize = 16; // 0-F
-pub const MAX_FONT_SIZE: usize = super_chip::FONT_SIZE;
-pub const MIN_FONT_SIZE: usize = chip8::FONT_SIZE;
 
 pub enum Backend {
     Chip8(chip8::Backend),
@@ -44,17 +46,17 @@ pub struct Timers {
 }
 
 impl Backend {
-    pub fn display_buffer(&mut self) -> Result<Vec<bool>, BackendError> {
+    pub fn get_display_buffer(&mut self) -> Result<Vec<bool>, BackendError> {
         match self {
             Self::Chip8(backend) => backend
                 .display_buffer
                 .as_mut()
-                .and_then(|buffer| Some(buffer.get()))
+                .and_then(|buffer| Some(buffer.get_flattened()))
                 .ok_or(BackendError {
                     kind: BackendErrorKind::DisplayNotConnected,
                     instruction: None,
                 }),
-            Self::SuperChip(backend) => Ok(backend.display_buffer.get()),
+            Self::SuperChip(backend) => Ok(backend.display_buffer.get_flattened()),
         }
     }
 
@@ -75,26 +77,16 @@ impl Backend {
         }
     }
 
-    pub fn display_options_mut(&mut self) -> &mut interfaces::DisplayOptions {
+    pub fn get_display_options_mut(&mut self) -> &mut interfaces::DisplayOptions {
         match self {
-            Self::Chip8(backend) => {
-                &mut backend
-                    .display_buffer
-                    .as_mut()
-                    .expect("Display must be connected")
-                    .options
-            }
+            Self::Chip8(backend) => &mut backend.display_buffer.as_mut().unwrap().options,
             Self::SuperChip(backend) => &mut backend.display_buffer.options,
         }
     }
 
     pub fn is_display_buffer_dirty(&mut self) -> bool {
         match self {
-            Self::Chip8(backend) => backend
-                .display_buffer
-                .as_mut()
-                .expect("Display must be connected")
-                .is_dirty(),
+            Self::Chip8(backend) => backend.display_buffer.as_mut().unwrap().is_dirty(),
             Self::SuperChip(backend) => backend.display_buffer.is_dirty(),
         }
     }
@@ -106,14 +98,14 @@ impl Backend {
         }
     }
 
-    pub fn options_mut(&mut self) -> &mut Options {
+    pub fn get_options_mut(&mut self) -> &mut Options {
         match self {
             Self::Chip8(backend) => &mut backend.options,
             Self::SuperChip(backend) => backend.options_mut(),
         }
     }
 
-    pub fn program_exited(&self) -> bool {
+    pub fn has_program_exited(&self) -> bool {
         match self {
             Self::Chip8(..) => false,
             Self::SuperChip(backend) => backend.program_exited,
@@ -124,11 +116,7 @@ impl Backend {
         match self {
             Self::Chip8(backend) => {
                 backend.reset();
-                backend
-                    .display_buffer
-                    .as_mut()
-                    .expect("Display must be connected")
-                    .clear();
+                backend.display_buffer.as_mut().unwrap().clear();
             }
             Self::SuperChip(backend) => {
                 backend.reset();
@@ -141,14 +129,20 @@ impl Backend {
         &mut self,
         n: u8,
         keyboard_state: &mut interfaces::KeypadState,
+        persistent_storage: Option<&mut [u8]>,
     ) -> Result<(), BackendError> {
         match self {
             Self::Chip8(backend) => backend.tick(n, keyboard_state),
-            Self::SuperChip(backend) => backend.tick(n, keyboard_state),
+            Self::SuperChip(backend) => backend.tick(
+                n,
+                keyboard_state,
+                persistent_storage
+                    .expect("persistent_storage shouldn't be None while using SuperChip backend"),
+            ),
         }
     }
 
-    pub fn timers(&self) -> &Timers {
+    pub fn get_timers(&self) -> &Timers {
         match self {
             Self::Chip8(backend) => &backend.timers,
             Self::SuperChip(backend) => backend.timers(),

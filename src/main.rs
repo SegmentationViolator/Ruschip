@@ -16,76 +16,47 @@
 const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
 
 use std::error;
+use std::fs;
+use std::io::Read;
+use std::rc;
 
-use clap::Parser;
-
-#[derive(Parser)]
-#[command(about, version)]
-struct Options {
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(clap::Subcommand)]
-enum Commands {
-    /// Shows license information
-    License,
-
-    /// Shows warranty information
-    Warranty,
-}
+use eframe::egui::mutex;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    let options = Options::parse();
+    let data_dir = dirs::data_dir()
+        .or(dirs::data_dir())
+        .expect("couldn't find a data directory")
+        .join("ruschip");
+    let data_file = data_dir.join("rpl_user_flags.dat");
 
-    match options.command {
-        None => (),
-        Some(Commands::License) => {
-            println!(
-                "
-                Ruschip  Copyright (C) 2023  Segmentation Violator
-                This program comes with ABSOLUTELY NO WARRANTY; for details use command `warranty'.
-                This is free software, and you are welcome to redistribute it
-                under certain conditions; see the source code or the GNU General Public License for copying conditions.
+    fs::create_dir_all(&data_dir)?;
 
-                You should have received a copy of the GNU General Public License
-                along with this program.  If not, see <https://www.gnu.org/licenses/>.
-                "
-            );
-            return Ok(());
-        }
-        Some(Commands::Warranty) => {
-            println!(
-                "
-                THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
-                APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
-                HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY
-                OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
-                THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-                PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
-                IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
-                ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
-                "
-            );
-            return Ok(());
-        }
-    }
+    let mut rpl_user_flags = [0; ruschip::backend::super_chip::PERSISTENT_STORAGE_SIZE];
+    let _ = fs::File::open(&data_file).and_then(|mut file| file.read(&mut rpl_user_flags));
+
+    let persistent_storage = rc::Rc::new(mutex::Mutex::new(rpl_user_flags));
+    let persistent_storage_clone = persistent_storage.clone();
 
     eframe::run_native(
         "Ruschip",
         eframe::NativeOptions {
             drag_and_drop_support: false,
             icon_data: Some(eframe::IconData::try_from_png_bytes(ICON_PNG)?),
-            run_and_return: true,
             ..Default::default()
         },
         Box::new(move |cc| {
             Box::new(ruschip::ui::App::new(
                 cc,
                 ruschip::backend::Backend::default(),
+                persistent_storage_clone,
             ))
         }),
     )?;
 
-    unreachable!();
+    fs::create_dir_all(data_dir)?;
+
+    let rpl_user_flags = persistent_storage.lock();
+    fs::write(data_file, rpl_user_flags.as_ref())?;
+
+    Ok(())
 }

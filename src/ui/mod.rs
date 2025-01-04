@@ -15,9 +15,11 @@
 
 use std::fmt::Write;
 use std::path;
+use std::rc;
 use std::time;
 
 use eframe::egui;
+use eframe::egui::mutex;
 use egui::color_picker;
 
 use crate::backend;
@@ -36,6 +38,7 @@ pub struct App {
     display_texture: egui::TextureId,
     file_picker: file_picker::FilePicker,
     frontend: frontend::Frontend,
+    persistent_storage: rc::Rc<mutex::Mutex<[u8; 8]>>,
     state: State,
 }
 
@@ -90,6 +93,70 @@ struct State {
     path_selection: PathSelection,
 }
 
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if self.state.emulation != Emulation::Stopped {
+            self.handle_input(ctx);
+        }
+
+        match self.state.menu {
+            Menu::BackendSelection => return self.backend_selection_menu(ctx),
+            Menu::Configuration => return self.configuration_menu(ctx),
+            Menu::Inactive => (),
+        }
+
+        if self.state.emulation == Emulation::Running {
+            ctx.request_repaint_after(TICK_INTERVAL);
+
+            let mut persistent_storage = self.persistent_storage.lock();
+            if let Err(error) = self.frontend.tick(ctx, persistent_storage.as_mut()) {
+                if error.is_fatal() {
+                    self.state.error.timestamp = time::Instant::now();
+                    self.state.error.message.clear();
+                    let _ = write!(self.state.error.message, "fatal error, {}", error);
+
+                    self.state.emulation = Emulation::Stopped;
+                    self.state.menu = Menu::Configuration;
+                    ctx.request_repaint();
+                    return;
+                }
+
+                eprintln!("{}", error);
+            }
+
+            if self.frontend.backend.has_program_exited() {
+                self.state.emulation = Emulation::Stopped;
+                self.state.menu = Menu::Configuration;
+                ctx.request_repaint();
+                return;
+            }
+        }
+
+        let window_size = frame.info().window_info.size;
+        let size;
+        let margin;
+
+        if window_size[0] / window_size[1] <= self.frontend.backend.display_buffer_aspect_ratio()
+            && window_size[0] > window_size[1]
+        {
+            size = window_size;
+            margin = egui::style::Margin::same(0.0);
+        } else {
+            size = egui::vec2(
+                window_size[0],
+                window_size[0] / self.frontend.backend.display_buffer_aspect_ratio(),
+            );
+            margin = egui::style::Margin::symmetric(0.0, (window_size[1] - size[1]) / 2.0);
+        };
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(margin))
+            .show(ctx, |ui| {
+                ui.add(egui::Image::new(self.display_texture, size));
+            });
+    }
+}
+
 impl App {
     fn handle_input(&mut self, ctx: &egui::Context) {
         ctx.input_mut(|input| {
@@ -106,7 +173,9 @@ impl App {
                 return;
             }
 
-            if self.state.menu == Menu::Inactive && input.consume_key(egui::Modifiers::NONE, egui::Key::Space) {
+            if self.state.menu == Menu::Inactive
+                && input.consume_key(egui::Modifiers::NONE, egui::Key::Space)
+            {
                 if self.state.emulation == Emulation::Running {
                     self.frontend.suspend();
                     self.state.emulation = Emulation::Suspended;
@@ -265,7 +334,7 @@ impl App {
                                     ui.checkbox(
                                         item_data
                                             .2
-                                            .get_quirk_mut(self.frontend.backend.options_mut()),
+                                            .get_quirk_mut(self.frontend.backend.get_options_mut()),
                                         "",
                                     );
                                 });
@@ -280,7 +349,7 @@ impl App {
 
                             menu_item(ui, "Clip Sprites", |ui| {
                                 ui.checkbox(
-                                    &mut self.frontend.backend.display_options_mut().clip_sprites,
+                                    &mut self.frontend.backend.get_display_options_mut().clip_sprites,
                                     "",
                                 );
                             });
@@ -344,7 +413,11 @@ impl App {
         });
     }
 
-    pub fn new(cc: &eframe::CreationContext, backend: backend::Backend) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext,
+        backend: backend::Backend,
+        persistent_storage: rc::Rc<mutex::Mutex<[u8; 8]>>,
+    ) -> Self {
         let mut visuals = cc.egui_ctx.style().visuals.clone();
 
         visuals.selection.bg_fill = PRIMARY_COLOR;
@@ -377,6 +450,7 @@ impl App {
             display_texture: frontend.display_texture(),
             file_picker: file_picker::FilePicker::new(),
             frontend,
+            persistent_storage,
             state,
         }
     }
@@ -442,69 +516,6 @@ impl App {
 
         self.state.emulation = Emulation::Running;
         self.state.menu = Menu::Inactive;
-    }
-}
-
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if self.state.emulation != Emulation::Stopped {
-            self.handle_input(ctx);
-        }
-
-        match self.state.menu {
-            Menu::BackendSelection => return self.backend_selection_menu(ctx),
-            Menu::Configuration => return self.configuration_menu(ctx),
-            Menu::Inactive => (),
-        }
-
-        if self.state.emulation == Emulation::Running {
-            ctx.request_repaint_after(TICK_INTERVAL);
-
-            if let Err(error) = self.frontend.tick(ctx) {
-                if error.is_fatal() {
-                    self.state.error.timestamp = time::Instant::now();
-                    self.state.error.message.clear();
-                    let _ = write!(self.state.error.message, "fatal error, {}", error);
-
-                    self.state.emulation = Emulation::Stopped;
-                    self.state.menu = Menu::Configuration;
-                    ctx.request_repaint();
-                    return;
-                }
-
-                eprintln!("{}", error);
-            }
-
-            if self.frontend.backend.program_exited() {
-                self.state.emulation = Emulation::Stopped;
-                self.state.menu = Menu::Configuration;
-                ctx.request_repaint();
-                return;
-            }
-        }
-
-        let window_size = frame.info().window_info.size;
-        let size;
-        let margin;
-
-        if window_size[0] / window_size[1] <= self.frontend.backend.display_buffer_aspect_ratio()
-            && window_size[0] > window_size[1]
-        {
-            size = window_size;
-            margin = egui::style::Margin::same(0.0);
-        } else {
-            size = egui::vec2(
-                window_size[0],
-                window_size[0] / self.frontend.backend.display_buffer_aspect_ratio(),
-            );
-            margin = egui::style::Margin::symmetric(0.0, (window_size[1] - size[1]) / 2.0);
-        };
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(margin))
-            .show(ctx, |ui| {
-                ui.add(egui::Image::new(self.display_texture, size));
-            });
     }
 }
 

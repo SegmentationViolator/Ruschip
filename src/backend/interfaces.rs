@@ -41,7 +41,7 @@ enum KeyState {
 }
 
 impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
-    pub fn get(&mut self) -> Vec<bool> {
+    pub fn get_flattened(&mut self) -> Vec<bool> {
         self.dirty = false;
         self.buffer.iter().copied().flatten().collect()
     }
@@ -66,7 +66,10 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
 
         let scaling_factor = if self.half_resolution { 2 } else { 1 };
 
-        let coordinates = (coordinates.0 * scaling_factor % W, coordinates.1 * scaling_factor % H);
+        let coordinates = (
+            coordinates.0 * scaling_factor % W,
+            coordinates.1 * scaling_factor % H,
+        );
         let mut colliding_rows = 0;
 
         for (y, byte) in sprite.iter().enumerate() {

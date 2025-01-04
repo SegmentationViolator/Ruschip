@@ -102,8 +102,12 @@ impl Frontend {
         self.sink.pause()
     }
 
-    pub fn tick(&mut self, ctx: &egui::Context) -> Result<(), FrontendError> {
-        match self.backend.timers().sound {
+    pub fn tick(
+        &mut self,
+        ctx: &egui::Context,
+        persistent_storage: &mut [u8],
+    ) -> Result<(), FrontendError> {
+        match self.backend.get_timers().sound {
             0 => self.sink.pause(),
             _ => self.sink.play(),
         }
@@ -112,10 +116,11 @@ impl Frontend {
             self.keypad_state.update(input);
         });
 
-        match self
-            .backend
-            .tick(INSTRUCTIONS_PER_TICK, &mut self.keypad_state)
-        {
+        match self.backend.tick(
+            INSTRUCTIONS_PER_TICK,
+            &mut self.keypad_state,
+            Some(persistent_storage),
+        ) {
             Ok(_) => (),
             Err(error) => {
                 return Err(FrontendError::Backend(error));
@@ -132,7 +137,7 @@ impl Frontend {
     pub fn update_texture(&mut self) -> Result<(), FrontendError> {
         let pixels: Vec<egui::Color32> = self
             .backend
-            .display_buffer()
+            .get_display_buffer()
             .map_err(|error| FrontendError::Backend(error))?
             .iter()
             .copied()
