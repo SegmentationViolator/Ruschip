@@ -52,6 +52,11 @@ impl Instruction {
     }
 
     #[inline]
+    pub fn operand_xy(&self) -> usize {
+        ((self.0 & 0x0FF0) >> (u8::BITS / 2)) as usize
+    }
+
+    #[inline]
     pub fn operand_y(&self) -> usize {
         ((self.0 & 0x00F0) >> (u8::BITS / 2)) as usize
     }

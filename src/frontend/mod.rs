@@ -139,8 +139,6 @@ impl Frontend {
             .backend
             .get_display_buffer()
             .map_err(|error| FrontendError::Backend(error))?
-            .iter()
-            .copied()
             .map(|pixel| self.colors.get(pixel))
             .collect();
 

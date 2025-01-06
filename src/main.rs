@@ -15,12 +15,11 @@
 
 const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
 
+use std::cell;
 use std::error;
 use std::fs;
 use std::io::Read;
 use std::rc;
-
-use eframe::egui::mutex;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let data_dir = dirs::data_dir()
@@ -31,10 +30,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     fs::create_dir_all(&data_dir)?;
 
-    let mut rpl_user_flags = [0; ruschip::backend::super_chip::PERSISTENT_STORAGE_SIZE];
+    let mut rpl_user_flags = [0; ruschip::backend::superchip::PERSISTENT_STORAGE_SIZE];
     let _ = fs::File::open(&data_file).and_then(|mut file| file.read(&mut rpl_user_flags));
 
-    let persistent_storage = rc::Rc::new(mutex::Mutex::new(rpl_user_flags));
+    let persistent_storage = rc::Rc::new(cell::RefCell::new(rpl_user_flags));
     let persistent_storage_clone = persistent_storage.clone();
 
     eframe::run_native(
@@ -55,7 +54,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     fs::create_dir_all(data_dir)?;
 
-    let rpl_user_flags = persistent_storage.lock();
+    let rpl_user_flags = persistent_storage.borrow();
     fs::write(data_file, rpl_user_flags.as_ref())?;
 
     Ok(())

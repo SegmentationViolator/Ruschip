@@ -13,13 +13,13 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::cell;
 use std::fmt::Write;
 use std::path;
 use std::rc;
 use std::time;
 
 use eframe::egui;
-use eframe::egui::mutex;
 use egui::color_picker;
 
 use crate::backend;
@@ -38,7 +38,7 @@ pub struct App {
     display_texture: egui::TextureId,
     file_picker: file_picker::FilePicker,
     frontend: frontend::Frontend,
-    persistent_storage: rc::Rc<mutex::Mutex<[u8; 8]>>,
+    persistent_storage: rc::Rc<cell::RefCell<[u8; 8]>>,
     state: State,
 }
 
@@ -108,7 +108,7 @@ impl eframe::App for App {
         if self.state.emulation == Emulation::Running {
             ctx.request_repaint_after(TICK_INTERVAL);
 
-            let mut persistent_storage = self.persistent_storage.lock();
+            let mut persistent_storage = self.persistent_storage.borrow_mut();
             if let Err(error) = self.frontend.tick(ctx, persistent_storage.as_mut()) {
                 if error.is_fatal() {
                     self.state.error.timestamp = time::Instant::now();
@@ -359,6 +359,23 @@ impl App {
                                     .small()
                             });
 
+                            match self.frontend.backend {
+                                backend::Backend::Chip8(..) => (),
+                                backend::Backend::SuperChip(..) => {
+                                    menu_item(ui, "Half Pixel Scrolling", |ui| {
+                                        ui.checkbox(
+                                            &mut self.frontend.backend.get_display_options_mut().half_pixel_scrolling,
+                                            "",
+                                        );
+                                    });
+                                    ui.label({
+                                        egui::RichText::new("Scroll same number of pixels in both resolution modes (scroll twice the pixels in low resolution if off)")
+                                            .color(egui::Color32::GRAY)
+                                            .small()
+                                    });
+                                }
+                            }
+                            
                             ui.add_space(MENU_SPACING);
 
                             ui.add_space(4.0 * MENU_SPACING);
@@ -416,7 +433,7 @@ impl App {
     pub fn new(
         cc: &eframe::CreationContext,
         backend: backend::Backend,
-        persistent_storage: rc::Rc<mutex::Mutex<[u8; 8]>>,
+        persistent_storage: rc::Rc<cell::RefCell<[u8; 8]>>,
     ) -> Self {
         let mut visuals = cc.egui_ctx.style().visuals.clone();
 

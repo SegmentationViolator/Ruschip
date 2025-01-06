@@ -17,20 +17,20 @@ pub mod chip8;
 mod error;
 mod instruction;
 pub mod interfaces;
-pub mod super_chip;
+pub mod superchip;
 
 pub use error::{BackendError, BackendErrorKind};
 pub use instruction::Instruction;
 
 pub use chip8::FONT_SIZE as MIN_FONT_SIZE;
-pub use super_chip::FONT_SIZE as MAX_FONT_SIZE;
-pub use super_chip::PERSISTENT_STORAGE_SIZE;
+pub use superchip::FONT_SIZE as MAX_FONT_SIZE;
+pub use superchip::PERSISTENT_STORAGE_SIZE;
 
 pub const KEY_COUNT: usize = 16; // 0-F
 
 pub enum Backend {
     Chip8(chip8::Backend),
-    SuperChip(super_chip::Backend),
+    SuperChip(superchip::Backend),
 }
 
 pub struct Options {
@@ -46,7 +46,9 @@ pub struct Timers {
 }
 
 impl Backend {
-    pub fn get_display_buffer(&mut self) -> Result<Vec<bool>, BackendError> {
+    pub fn get_display_buffer<'a>(
+        &'a mut self,
+    ) -> Result<impl Iterator<Item = bool> + 'a, BackendError> {
         match self {
             Self::Chip8(backend) => backend
                 .display_buffer
@@ -63,7 +65,7 @@ impl Backend {
     pub fn display_buffer_aspect_ratio(&self) -> f32 {
         match self {
             Self::Chip8(..) => chip8::DISPLAY_BUFFER_ASPECT_RATIO,
-            Self::SuperChip(..) => super_chip::DISPLAY_BUFFER_ASPECT_RATIO,
+            Self::SuperChip(..) => superchip::DISPLAY_BUFFER_ASPECT_RATIO,
         }
     }
 
@@ -71,8 +73,8 @@ impl Backend {
         match self {
             Self::Chip8(..) => [chip8::DISPLAY_BUFFER_WIDTH, chip8::DISPLAY_BUFFER_HEIGHT],
             Self::SuperChip(..) => [
-                super_chip::DISPLAY_BUFFER_WIDTH,
-                super_chip::DISPLAY_BUFFER_HEIGHT,
+                superchip::DISPLAY_BUFFER_WIDTH,
+                superchip::DISPLAY_BUFFER_HEIGHT,
             ],
         }
     }

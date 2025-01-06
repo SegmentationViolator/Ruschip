@@ -13,13 +13,15 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::iter;
+
 use bitvec::view::BitViewSized;
 use eframe::egui;
 
 use crate::defaults;
 
 pub(super) struct DisplayBuffer<const W: usize, const H: usize> {
-    buffer: [[bool; W]; H],
+    buffer: Vec<Vec<bool>>,
     dirty: bool,
     pub(super) half_resolution: bool,
     pub options: DisplayOptions,
@@ -27,6 +29,7 @@ pub(super) struct DisplayBuffer<const W: usize, const H: usize> {
 
 pub struct DisplayOptions {
     pub clip_sprites: bool,
+    pub half_pixel_scrolling: bool,
 }
 
 pub struct KeypadState {
@@ -41,9 +44,11 @@ enum KeyState {
 }
 
 impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
-    pub fn get_flattened(&mut self) -> Vec<bool> {
+    pub fn get_flattened<'a>(
+        &'a mut self,
+    ) -> iter::Copied<iter::Flatten<std::slice::Iter<'a, Vec<bool>>>> {
         self.dirty = false;
-        self.buffer.iter().copied().flatten().collect()
+        self.buffer.iter().flatten().copied()
     }
 
     pub fn clear(&mut self) {
@@ -160,16 +165,119 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
         colliding_rows
     }
 
+    #[inline]
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
     pub fn new(options: DisplayOptions) -> Self {
         Self {
-            buffer: [[false; W]; H],
+            buffer: vec![vec![false; W]; H],
             dirty: false,
             half_resolution: false,
             options,
+        }
+    }
+
+    pub fn scroll_down(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let n = if self.half_resolution && !self.options.half_pixel_scrolling {
+            2 * n
+        } else {
+            n
+        };
+
+        self.dirty = true;
+
+        for i in (0..H - n).rev() {
+            let dest = &mut self.buffer[i + n] as *mut Vec<bool>;
+            let src = &mut self.buffer[i];
+
+            unsafe {
+                (*dest).copy_from_slice(src);
+            }
+
+            if i < n {
+                src.fill(false);
+            }
+        }
+    }
+
+    pub fn scroll_left(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let n = if self.half_resolution && !self.options.half_pixel_scrolling {
+            2 * n
+        } else {
+            n
+        };
+
+        self.dirty = true;
+
+        for i in 0..H {
+            for j in 0..W - n {
+                self.buffer[i][j] = self.buffer[i][j + n];
+
+                if j + n > W - n {
+                    self.buffer[i][j + n] = false;
+                }
+            }
+        }
+    }
+
+    pub fn scroll_right(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let n = if self.half_resolution && !self.options.half_pixel_scrolling {
+            2 * n
+        } else {
+            n
+        };
+
+        self.dirty = true;
+
+        for i in 0..H {
+            for j in (0..W - n).rev() {
+                self.buffer[i][j + n] = self.buffer[i][j];
+
+                if j < n {
+                    self.buffer[i][j] = false;
+                }
+            }
+        }
+    }
+
+    pub fn scroll_up(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+
+        let n = if self.half_resolution && !self.options.half_pixel_scrolling {
+            2 * n
+        } else {
+            n
+        };
+
+        self.dirty = true;
+
+        for i in 0..H - n {
+            let dest = &mut self.buffer[i] as *mut Vec<bool>;
+            let src = &mut self.buffer[i + n];
+
+            unsafe {
+                (*dest).copy_from_slice(src);
+            }
+
+            if i < n {
+                src.fill(false);
+            }
         }
     }
 }
@@ -182,6 +290,7 @@ impl KeypadState {
         }
     }
 
+    #[inline]
     pub fn pressed(&self, key: usize) -> bool {
         self.state[key] == KeyState::Held
     }

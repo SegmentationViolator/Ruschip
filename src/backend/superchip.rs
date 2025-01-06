@@ -50,7 +50,17 @@ impl Backend {
         persistent_storage: &mut [u8],
     ) -> Result<ControlFlow<()>, BackendError> {
         match instruction.operator_code() {
+            0x0 if instruction.operand_xy() == 0x0B => self
+                .display_buffer
+                .scroll_up(instruction.operand_n() as usize),
+            0x0 if instruction.operand_xy() == 0x0C => self
+                .display_buffer
+                .scroll_down(instruction.operand_n() as usize),
+
             0x0 if instruction.operand_nnn() == 0x0E0 => self.display_buffer.clear(),
+
+            0x0 if instruction.operand_nnn() == 0x0FB => self.display_buffer.scroll_right(4),
+            0x0 if instruction.operand_nnn() == 0x0FC => self.display_buffer.scroll_left(4),
 
             0x0 if instruction.operand_nnn() == 0x0FD => {
                 self.program_exited = true;
@@ -168,6 +178,7 @@ impl Backend {
         }
     }
 
+    #[inline]
     pub fn options_mut(&mut self) -> &mut super::Options {
         &mut self.inner.options
     }
@@ -234,7 +245,10 @@ impl Default for Backend {
                 quirky_jump: true,
                 reset_flag: false,
             },
-            interfaces::DisplayOptions { clip_sprites: true },
+            interfaces::DisplayOptions {
+                clip_sprites: true,
+                half_pixel_scrolling: false,
+            },
         )
     }
 }

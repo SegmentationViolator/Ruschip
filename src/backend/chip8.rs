@@ -259,14 +259,16 @@ impl Backend {
                     });
                 };
 
-                self.registers.general[15] = display_buffer.draw(
+                let colliding_rows = display_buffer.draw(
                     (
                         self.registers.general[instruction.operand_x()] as usize,
                         self.registers.general[instruction.operand_y()] as usize,
                     ),
                     &self.memory[self.registers.address
                         ..self.registers.address + instruction.operand_n() as usize],
-                ) as u8;
+                );
+
+                self.registers.general[15] = (colliding_rows > 0) as u8;
 
                 return Ok(ControlFlow::Break(()));
             }
@@ -311,15 +313,18 @@ impl Backend {
             0xF => match instruction.operand_nn() {
                 0x07 => self.registers.general[instruction.operand_x()] = self.timers.delay,
 
-                0x0A => match keyboard_state.pressed_key() {
-                    Some(key) => {
-                        self.registers.general[instruction.operand_x()] = key as u8;
+                0x0A => {
+                    match keyboard_state.pressed_key() {
+                        Some(key) => {
+                            self.registers.general[instruction.operand_x()] = key as u8;
+                        }
+                        None => {
+                            self.index = index;
+                        }
                     }
-                    None => {
-                        self.index = index;
-                        return Ok(ControlFlow::Break(()));
-                    }
-                },
+
+                    return Ok(ControlFlow::Break(()));
+                }
 
                 0x15 => self.timers.delay = self.registers.general[instruction.operand_x()],
 
@@ -514,7 +519,10 @@ impl Default for Backend {
                 quirky_jump: false,
                 reset_flag: true,
             },
-            Some(interfaces::DisplayOptions { clip_sprites: true }),
+            Some(interfaces::DisplayOptions {
+                clip_sprites: true,
+                half_pixel_scrolling: Default::default(),
+            }),
         )
     }
 }
