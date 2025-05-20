@@ -67,13 +67,17 @@ impl Backend {
                 return Ok(ControlFlow::Break(()));
             }
 
-            0x0 if instruction.operand_nnn() == 0x0FE => self.display_buffer.half_resolution = true,
+            0x0 if instruction.operand_nnn() == 0x0FE => {
+                self.display_buffer.half_resolution = true;
+                self.display_buffer.clear();
+            }
             0x0 if instruction.operand_nnn() == 0x0FF => {
-                self.display_buffer.half_resolution = false
+                self.display_buffer.half_resolution = false;
+                self.display_buffer.clear();
             }
 
             0xD => {
-                let n = if !self.display_buffer.half_resolution && instruction.operand_n() == 0 {
+                let n = if instruction.operand_n() == 0 {
                     32
                 } else {
                     instruction.operand_n() as usize

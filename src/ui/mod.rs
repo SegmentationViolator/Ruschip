@@ -375,7 +375,7 @@ impl App {
                                     });
                                 }
                             }
-                            
+
                             ui.add_space(MENU_SPACING);
 
                             ui.add_space(4.0 * MENU_SPACING);

@@ -1,6 +1,6 @@
 [package]
 name = "ruschip"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Segmentation Violator <segmentationviolator@proton.me>"]
 edition = "2021"
 description = "a multi-variant CHIP-8 emulator"

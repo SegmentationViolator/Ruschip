@@ -60,15 +60,19 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
     }
 
     pub fn draw(&mut self, coordinates: (usize, usize), sprite: &[u8]) -> usize {
-        if sprite.len() == 32 && !self.half_resolution {
-            let mut sprite_16x16 = Vec::with_capacity(16);
-            for i in 0..16 {
-                sprite_16x16.push(u16::from_be_bytes([sprite[2 * i], sprite[2 * i + 1]]))
-            }
+        if sprite.len() == 32 {
+            let sprite_16x16: Vec<u16> = sprite
+                .chunks(2)
+                .map(|pair| u16::from_be_bytes(pair.try_into().unwrap()))
+                .collect();
 
-            return self.draw_16x16(coordinates, &sprite_16x16);
+            return self.draw_internal(coordinates, &sprite_16x16);
         }
 
+        self.draw_internal(coordinates, sprite)
+    }
+
+    fn draw_internal<B: BitViewSized + Copy>(&mut self, coordinates: (usize, usize), sprite: &[B]) -> usize {
         let scaling_factor = if self.half_resolution { 2 } else { 1 };
 
         let coordinates = (
@@ -77,7 +81,7 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
         );
         let mut colliding_rows = 0;
 
-        for (y, byte) in sprite.iter().enumerate() {
+        for (y, row) in sprite.iter().enumerate() {
             let cy = coordinates.1 + y * scaling_factor;
 
             if self.options.clip_sprites && cy == H {
@@ -88,7 +92,7 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
             let cy = cy % H;
             let mut collided = false;
 
-            for (x, bit) in byte
+            for (x, bit) in row
                 .into_bitarray::<bitvec::order::Msb0>()
                 .iter()
                 .enumerate()
@@ -114,47 +118,6 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
                             collided |= !(self.buffer[i][j])
                         }
                     }
-                };
-            }
-
-            colliding_rows += collided as usize;
-        }
-        self.dirty = true;
-
-        colliding_rows
-    }
-
-    pub fn draw_16x16(&mut self, coordinates: (usize, usize), sprite: &[u16]) -> usize {
-        let coordinates = (coordinates.0 % W, coordinates.1 % H);
-        let mut colliding_rows = 0;
-
-        for (y, row) in sprite.iter().enumerate() {
-            let cy = coordinates.1 + y;
-
-            if self.options.clip_sprites && cy == H {
-                colliding_rows += sprite.len() - y;
-                break;
-            }
-
-            let cy = cy % H;
-            let mut collided = false;
-
-            for (x, bit) in row
-                .into_bitarray::<bitvec::order::Msb0>()
-                .iter()
-                .enumerate()
-            {
-                let cx = coordinates.0 + x;
-
-                if self.options.clip_sprites && cx == W {
-                    break;
-                }
-
-                let cx = cx % W;
-
-                if *bit {
-                    self.buffer[cy][cx] ^= true;
-                    collided |= !self.buffer[cy][cx];
                 };
             }
 
