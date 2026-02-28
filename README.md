@@ -1,7 +1,7 @@
-## Ruschip - A CHIP-8 Emulator written in Rust
+## Ruschip - A multi-variant CHIP-8 Interpreter
 
 <p align="center">
-    <img src="assets/Ruschip.svg" width="256px" heigth="256px" />
+    <img src="assets/icon.png" width="256px" heigth="256px" />
 </p>
 
 ### Features
@@ -49,7 +49,6 @@ cargo install --path Ruschip
 ```
 
 ### Issues
-Known issues:
 - The sound and delay timers might be a bit inconsistent as they depend on the frame rate being 60 fps (which might not always be the case)
 
 ### References
