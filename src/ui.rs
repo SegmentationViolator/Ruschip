@@ -16,10 +16,10 @@
 
 use std::error::Error;
 use std::fmt::Write;
-use std::time;
 
 use eframe::egui;
 use egui::color_picker;
+use web_time as time;
 
 use crate::backend;
 use crate::frontend;

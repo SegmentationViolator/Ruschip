@@ -199,7 +199,7 @@
                     // {
                         cargoArtifacts = web.${system}.cargoArtifacts;
                         trunkExtraBuildArgs = "--filehash=false -minify=true";
-                        inherit (web.${system}.pkgs) wasm-bindgen-cli;
+                        inherit (web.${system}.pkgs) wasm-bindgen-cli_0_2_126;
                     }
                 );
             });
@@ -208,17 +208,14 @@
                 default = aliases.${system}.craneLib.devShell {
                     checks = self.checks.${system};
 
-                    nativeBuildInputs = with aliases.${system}.pkgs; [
-                        pkg-config
-                    ];
-
-                    buildInputs =
+                    packages =
                         with aliases.${system}.pkgs;
                         lib.optionals stdenv.buildPlatform.isLinux [
                             alsa-lib
                             egl-wayland
                             libGL
                             libxkbcommon
+                            pkg-config
                             wayland
                         ]
                         ++ lib.optionals stdenv.buildPlatform.isDarwin [
@@ -241,10 +238,10 @@
                 web = web.${system}.craneLib.devShell {
                     checks = self.checks.${system};
 
-                    nativeBuildInputs = with web.${system}.pkgs; [
+                    packages = with web.${system}.pkgs; [
                         dart-sass
                         trunk
-                        wasm-bindgen-cli
+                        wasm-bindgen-cli_0_2_126
                     ];
                 };
             });

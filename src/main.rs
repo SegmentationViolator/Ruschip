@@ -14,12 +14,19 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg(not(target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 const APP_NAME: &str = "ruschip";
+#[cfg(not(target_arch = "wasm32"))]
 const APP_TITLE: &str = "Ruschip";
+#[cfg(target_arch = "wasm32")]
+const CANVAS_ID: &str = "ruschip-canvas";
+#[cfg(not(target_arch = "wasm32"))]
 const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<(), eframe::Error> {
     let viewport = eframe::egui::ViewportBuilder::default()
         .with_title(APP_TITLE.to_string())
@@ -33,4 +40,25 @@ fn main() -> Result<(), eframe::Error> {
         },
         Box::new(ruschip::ui::App::new),
     )
+}
+
+
+#[cfg(target_arch = "wasm32")]
+fn main() -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| JsValue::from_str("document is unavailable"))?;
+    let canvas = document
+        .get_element_by_id(CANVAS_ID)
+        .ok_or_else(|| JsValue::from_str("Ruschip canvas is missing"))?
+        .dyn_into::<web_sys::HtmlCanvasElement>()?;
+
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(error) = ruschip::web::start(canvas).await {
+            web_sys::console::error_1(&error);
+        }
+    });
+
+    Ok(())
 }
