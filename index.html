@@ -1,0 +1,8 @@
+<!doctype html><html lang=en><meta charset=utf-8><meta content="width=device-width,initial-scale=1" name=viewport><meta content=#815BA4 name=theme-color><link href=/Ruschip/icon-e145861354b165b0.png integrity=sha384-e+9vGlRkeStbkN4fW+qhqnSti0bB8dY2l0dNKKsPY/o/O4MtafUJC0Q8jkfnHHAY rel=icon><script type=module>import init, * as bindings from '/Ruschip/ruschip-cfbefa7e4daef592.js';
+const wasm = await init({ module_or_path: '/Ruschip/ruschip-cfbefa7e4daef592_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));</script><style>html,body,#ruschip-canvas{width:100%;height:100%;margin:0}body{background:#1c1c1c;margin:0;padding:0;overflow:hidden}#ruschip-canvas{outline:none;display:block}</style><title>Ruschip</title><link crossorigin href=/Ruschip/ruschip-cfbefa7e4daef592.js integrity=sha384-7yGPxwPc8bwiWu3cQVcNI2AaeLoOwy5fl/MhSQhq/IPrx+v2U4azdh9zsoNohnhc rel=modulepreload><link as=fetch crossorigin href=/Ruschip/ruschip-cfbefa7e4daef592_bg.wasm integrity=sha384-Tweg40K6rhxrGUo6+KVxn3HdzjrN2mTiIdEqQzInA4eMglIFPMEl4qK/Q9WeXWdr rel=preload type=application/wasm></head><body><canvas id=ruschip-canvas tabindex=0>Ruschip requires a browser with canvas support.</canvas></body></html>
