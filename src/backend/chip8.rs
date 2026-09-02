@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -14,19 +15,19 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::mem;
-use std::ops::ControlFlow;
+use std::ops;
 
 use crate::defaults;
 
-use super::interfaces;
+use super::interfaces::{display_buffer, keypad_state};
 use super::BackendError;
 use super::BackendErrorKind;
 use super::Instruction;
 
-pub const DISPLAY_BUFFER_ASPECT_RATIO: f32 = (DISPLAY_BUFFER_WIDTH / DISPLAY_BUFFER_HEIGHT) as f32;
 pub const DISPLAY_BUFFER_HEIGHT: usize = 32;
 pub const DISPLAY_BUFFER_WIDTH: usize = 64;
-pub const FONT_SIZE: usize = CHARACTER_SIZE * super::KEY_COUNT;
+pub const FONT_SIZE: usize = CHARACTER_SIZE * keypad_state::KEY_COUNT;
+pub const TICK_RATE: usize = 15;
 
 pub(super) const CHARACTER_SIZE: usize = 5;
 const MEMORY_PADDING: usize = 512;
@@ -35,15 +36,14 @@ const REGISTER_COUNT: usize = 16;
 const STACK_SIZE: usize = 16;
 
 pub struct Backend {
-    pub(super) display_buffer:
-        Option<interfaces::DisplayBuffer<DISPLAY_BUFFER_WIDTH, DISPLAY_BUFFER_HEIGHT>>,
     pub(super) index: usize,
     pub(super) loaded: bool,
     pub(super) memory: [u8; MEMORY_SIZE],
-    pub options: super::Options,
+    pub options: super::BackendOptions,
     pub(super) registers: Registers,
     pub(super) stack: Vec<u16>,
-    pub timers: super::Timers,
+    pub(super) delay: super::Timer,
+    pub(super) sound: super::Timer,
 }
 
 pub(super) struct Registers {
@@ -56,17 +56,12 @@ impl Backend {
         &mut self,
         index: usize,
         instruction: Instruction,
-        keyboard_state: &mut interfaces::KeypadState,
-    ) -> Result<ControlFlow<()>, BackendError> {
+        display_buffer: &mut display_buffer::DisplayBuffer,
+        keypad_state: &mut keypad_state::KeypadState,
+    ) -> Result<ops::ControlFlow<()>, BackendError> {
         match instruction.operator_code() {
             0x0 => match instruction.operand_nnn() {
                 0x0E0 => {
-                    let Some(ref mut display_buffer) = self.display_buffer else {
-                        return Err(BackendError {
-                            instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::DisplayNotConnected,
-                        });
-                    };
                     display_buffer.clear();
                 }
 
@@ -115,7 +110,7 @@ impl Backend {
                     0x9 if self.registers.general[instruction.operand_x()]
                         != self.registers.general[instruction.operand_y()] => {}
 
-                    _ => return Ok(ControlFlow::Continue(())),
+                    _ => return Ok(ops::ControlFlow::Continue(())),
                 }
 
                 self.index += mem::size_of::<Instruction>();
@@ -252,13 +247,6 @@ impl Backend {
                     });
                 }
 
-                let Some(ref mut display_buffer) = self.display_buffer else {
-                    return Err(BackendError {
-                        instruction: Some((index, Some(instruction))),
-                        kind: BackendErrorKind::DisplayNotConnected,
-                    });
-                };
-
                 let colliding_rows = display_buffer.draw(
                     (
                         self.registers.general[instruction.operand_x()] as usize,
@@ -270,34 +258,34 @@ impl Backend {
 
                 self.registers.general[15] = (colliding_rows > 0) as u8;
 
-                return Ok(ControlFlow::Break(()));
+                return Ok(ops::ControlFlow::Break(()));
             }
 
             0xE => match instruction.operand_nn() {
                 0x9E => {
                     let key = self.registers.general[instruction.operand_x()] as usize;
-                    if key >= super::KEY_COUNT {
+                    if key >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
                             kind: BackendErrorKind::UnrecognizedKey,
                         });
                     }
 
-                    if keyboard_state.pressed(key) {
+                    if keypad_state.pressed(key) {
                         self.index += mem::size_of::<Instruction>();
                     }
                 }
 
                 0xA1 => {
                     let key = self.registers.general[instruction.operand_x()] as usize;
-                    if key >= super::KEY_COUNT {
+                    if key >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
                             kind: BackendErrorKind::UnrecognizedKey,
                         });
                     }
 
-                    if !keyboard_state.pressed(key) {
+                    if !keypad_state.pressed(key) {
                         self.index += mem::size_of::<Instruction>();
                     }
                 }
@@ -311,10 +299,10 @@ impl Backend {
             },
 
             0xF => match instruction.operand_nn() {
-                0x07 => self.registers.general[instruction.operand_x()] = self.timers.delay,
+                0x07 => self.registers.general[instruction.operand_x()] = self.delay.get(),
 
                 0x0A => {
-                    match keyboard_state.pressed_key() {
+                    match keypad_state.pressed_key() {
                         Some(key) => {
                             self.registers.general[instruction.operand_x()] = key as u8;
                         }
@@ -323,12 +311,11 @@ impl Backend {
                         }
                     }
 
-                    return Ok(ControlFlow::Break(()));
+                    return Ok(ops::ControlFlow::Break(()));
                 }
 
-                0x15 => self.timers.delay = self.registers.general[instruction.operand_x()],
-
-                0x18 => self.timers.sound = self.registers.general[instruction.operand_x()],
+                0x15 => self.delay.set(self.registers.general[instruction.operand_x()]),
+                0x18 => self.sound.set(self.registers.general[instruction.operand_x()]),
 
                 0x1E => {
                     self.registers.address = (self.registers.address
@@ -339,7 +326,7 @@ impl Backend {
                 0x29 => {
                     let character_code = self.registers.general[instruction.operand_x()] as usize;
 
-                    if character_code >= super::KEY_COUNT {
+                    if character_code >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
                             kind: BackendErrorKind::UnrecognizedSprite,
@@ -418,7 +405,7 @@ impl Backend {
             }
         }
 
-        Ok(ControlFlow::Continue(()))
+        Ok(ops::ControlFlow::Continue(()))
     }
 
     pub fn load(&mut self, font: Option<&[u8]>, program: &[u8]) -> Result<(), BackendError> {
@@ -439,12 +426,9 @@ impl Backend {
     }
 
     pub fn new(
-        options: super::Options,
-        display_options: Option<interfaces::DisplayOptions>,
+        options: super::BackendOptions,
     ) -> Self {
         Self {
-            display_buffer: display_options
-                .and_then(|options| Some(interfaces::DisplayBuffer::new(options))),
             index: MEMORY_PADDING,
             loaded: false,
             memory: [0; MEMORY_SIZE],
@@ -454,7 +438,8 @@ impl Backend {
                 general: [0; REGISTER_COUNT],
             },
             stack: Vec::with_capacity(STACK_SIZE),
-            timers: super::Timers { delay: 0, sound: 0 },
+            delay: super::Timer::new(),
+            sound: super::Timer::new(),
         }
     }
 
@@ -466,14 +451,14 @@ impl Backend {
 
         self.stack.clear();
 
-        self.timers.delay = 0;
-        self.timers.sound = 0;
+        self.delay.set(0);
+        self.sound.set(0);
     }
 
     pub fn tick(
         &mut self,
-        n: u8,
-        keyboard_state: &mut interfaces::KeypadState,
+        display_buffer: &mut display_buffer::DisplayBuffer,
+        keyboard_state: &mut keypad_state::KeypadState,
     ) -> Result<(), BackendError> {
         if !self.loaded {
             return Err(BackendError {
@@ -482,10 +467,7 @@ impl Backend {
             });
         }
 
-        self.timers.delay = self.timers.delay.saturating_sub(1);
-        self.timers.sound = self.timers.sound.saturating_sub(1);
-
-        for _ in 0..n {
+        for _ in 0..TICK_RATE {
             if self.index + 1 >= self.memory.len() {
                 return Err(BackendError {
                     instruction: Some((self.index, None)),
@@ -499,7 +481,7 @@ impl Backend {
             let last_index = self.index;
             self.index += mem::size_of::<Instruction>();
 
-            let control_flow = self.execute(last_index, instruction, keyboard_state)?;
+            let control_flow = self.execute(last_index, instruction, display_buffer, keyboard_state)?;
 
             if control_flow.is_break() {
                 break;
@@ -513,16 +495,12 @@ impl Backend {
 impl Default for Backend {
     fn default() -> Self {
         Self::new(
-            super::Options {
+            super::BackendOptions {
                 copy_and_shift: true,
                 increment_address: true,
                 quirky_jump: false,
                 reset_flag: true,
-            },
-            Some(interfaces::DisplayOptions {
-                clip_sprites: true,
-                half_pixel_scrolling: Default::default(),
-            }),
+            }
         )
     }
 }

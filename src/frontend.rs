@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -15,24 +16,13 @@
 
 use eframe::egui;
 
-use rodio::source;
-use rodio::Source;
-
-use crate::backend::{self, interfaces};
+use crate::backend::{self, interfaces::{display_buffer, keypad_state}};
 use crate::defaults;
 
+mod audio;
 mod error;
 
 pub use error::FrontendError;
-
-const INSTRUCTIONS_PER_TICK: u8 = 28;
-const BUZZ_FREQUENCY: f32 = 220.0;
-const BUZZ_AMPLITUDE: f32 = 10.0;
-
-#[repr(transparent)]
-pub struct Beep {
-    sine: source::SineWave,
-}
 
 #[derive(Clone, Copy)]
 pub struct Colors {
@@ -41,12 +31,12 @@ pub struct Colors {
 }
 
 pub struct Frontend {
+    audio: audio::RodioAudio,
     pub backend: backend::Backend,
     pub colors: Colors,
+    pub display_buffer: display_buffer::DisplayBuffer,
     display_texture: egui::TextureHandle,
-    keypad_state: interfaces::KeypadState,
-    sink: rodio::Sink,
-    _stream: rodio::OutputStreamHandle,
+    pub keypad_state: keypad_state::KeypadState,
 }
 
 impl Colors {
@@ -65,61 +55,50 @@ impl Frontend {
     }
 
     pub fn new(
-        backend: backend::Backend,
         ctx: &egui::Context,
-        stream: rodio::OutputStreamHandle,
-    ) -> Self {
-        let sink = rodio::Sink::try_new(&stream)
-            .map_err(FrontendError::Audio)
-            .unwrap();
-        sink.pause();
-        sink.append(
-            source::SineWave::new(BUZZ_FREQUENCY)
-                .stoppable()
-                .amplify(BUZZ_AMPLITUDE),
-        );
+        backend: backend::Backend,
+        mut display_buffer: display_buffer::DisplayBuffer,
+    ) -> Result<Self, FrontendError> {
+        let audio = audio::RodioAudio::new()
+            .map_err(FrontendError::Audio)?;
 
-        Self {
+        let pixels: Vec<egui::Color32> = display_buffer
+            .flattened()
+            .map(|pixel| defaults::COLORS.get(pixel))
+            .collect();
+
+        Ok(Self {
+            audio,
+            backend,
             colors: defaults::COLORS,
             display_texture: ctx.load_texture(
                 "Display Texture",
-                egui::ColorImage::new(backend.display_buffer_size(), defaults::COLORS.inactive),
+                egui::ColorImage::new(display_buffer.size(), pixels),
                 egui::TextureOptions::default(),
             ),
-            backend,
-            keypad_state: interfaces::KeypadState::new(),
-            sink,
-            _stream: stream,
-        }
+            display_buffer,
+            keypad_state: keypad_state::KeypadState::new(),
+        })
     }
 
     pub fn reset(&mut self) {
         self.backend.reset();
-        self.sink.pause();
+        self.display_buffer.clear();
+        self.audio.set_enabled(false);
     }
 
-    pub fn suspend(&self) {
-        self.sink.pause()
+    pub fn suspend(&mut self) {
+        self.audio.set_enabled(false);
     }
 
     pub fn tick(
         &mut self,
-        ctx: &egui::Context,
-        persistent_storage: &mut [u8],
     ) -> Result<(), FrontendError> {
-        match self.backend.get_timers().sound {
-            0 => self.sink.pause(),
-            _ => self.sink.play(),
-        }
-
-        ctx.input(|input| {
-            self.keypad_state.update(input);
-        });
+        self.audio.set_enabled(self.backend.sound() > 0);
 
         match self.backend.tick(
-            INSTRUCTIONS_PER_TICK,
+            &mut self.display_buffer,
             &mut self.keypad_state,
-            Some(persistent_storage),
         ) {
             Ok(_) => (),
             Err(error) => {
@@ -127,7 +106,7 @@ impl Frontend {
             }
         }
 
-        if self.backend.is_display_buffer_dirty() {
+        if self.display_buffer.is_dirty() {
             self.update_texture()?;
         }
 
@@ -136,17 +115,16 @@ impl Frontend {
 
     pub fn update_texture(&mut self) -> Result<(), FrontendError> {
         let pixels: Vec<egui::Color32> = self
-            .backend
-            .get_display_buffer()
-            .map_err(|error| FrontendError::Backend(error))?
+            .display_buffer
+            .flattened()
             .map(|pixel| self.colors.get(pixel))
             .collect();
 
         self.display_texture.set(
-            egui::ColorImage {
-                size: self.backend.display_buffer_size(),
+            egui::ColorImage::new(
+                self.display_buffer.size(),
                 pixels,
-            },
+            ),
             egui::TextureOptions::NEAREST,
         );
 

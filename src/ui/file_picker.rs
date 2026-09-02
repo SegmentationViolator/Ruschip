@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -13,61 +14,73 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::fs;
-use std::io;
-use std::path;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync;
+use std::task;
 
-use eframe::egui;
+pub struct SelectedFile {
+    bytes: Vec<u8>,
+    name: String,
+}
 
-#[repr(transparent)]
 pub struct FilePicker {
-    dialog: egui_file::FileDialog,
+    future: Option<Pin<Box<dyn Future<Output = Option<SelectedFile>>>>>,
 }
 
 impl FilePicker {
     #[inline]
     pub fn is_open(&self) -> bool {
-        self.dialog.state() == egui_file::State::Open
+        self.future.is_some()
     }
 
-    pub fn load(path: Option<&path::PathBuf>) -> Result<Option<Vec<u8>>, String> {
-        path.map(|path| {
-            fs::read(path).map_err(|error| match error.kind() {
-                io::ErrorKind::NotFound => {
-                    format!(
-                        "file '{}' does not exists",
-                        path.file_name()
-                            .and_then(|file_name| file_name.to_str())
-                            .unwrap()
-                    )
-                }
-                _ => {
-                    format!("{}", error)
-                }
-            })
-        })
-        .transpose()
+    pub fn load(file: Option<&SelectedFile>) -> Option<Vec<u8>> {
+        file.map(|file| file.bytes.clone())
     }
 
     pub fn new() -> Self {
-        Self {
-            dialog: egui_file::FileDialog::open_file(None)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .show_new_folder(false)
-                .show_rename(false),
-        }
+        Self { future: None }
     }
 
-    #[inline]
     pub fn open(&mut self) {
-        self.dialog.open();
-    }
-
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<&path::Path> {
-        if self.dialog.show(ctx).selected() {
-            return self.dialog.path();
+        if self.future.is_some() {
+            return;
         }
 
-        None
+        self.future = Some(Box::pin(async {
+            let file = rfd::AsyncFileDialog::new().pick_file().await?;
+
+            Some(SelectedFile {
+                name: file.file_name(),
+                bytes: file.read().await,
+            })
+        }));
     }
+
+    pub fn poll(&mut self) -> Option<SelectedFile> {
+        let future = self.future.as_mut()?;
+        let waker = task::Waker::from(sync::Arc::new(NoopWaker));
+        let mut context = task::Context::from_waker(&waker);
+
+        match future.as_mut().poll(&mut context) {
+            task::Poll::Pending => None,
+            task::Poll::Ready(file) => {
+                self.future = None;
+                file
+            }
+        }
+    }
+}
+
+impl SelectedFile {
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+struct NoopWaker;
+
+impl task::Wake for NoopWaker {
+    fn wake(self: sync::Arc<Self>) {}
 }

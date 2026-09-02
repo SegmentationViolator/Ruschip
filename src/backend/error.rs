@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -26,7 +27,6 @@ pub struct BackendError {
 
 #[derive(Debug)]
 pub enum BackendErrorKind {
-    DisplayNotConnected,
     MemoryOverflow,
     ProgramInvalid,
     ProgramNotLoaded,
@@ -57,7 +57,6 @@ impl fmt::Display for BackendErrorKind {
             f,
             "{}",
             match self {
-                Self::DisplayNotConnected => "[internal error/bug] attempt to run an instruction that uses the display without connecting the display",
                 Self::MemoryOverflow => "attempt to access invalid memory address",
                 Self::ProgramInvalid => "attempt to load invalid program",
                 Self::ProgramNotLoaded => "attempt to run without loading any program",

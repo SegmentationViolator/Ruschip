@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -19,6 +20,12 @@ use std::mem;
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
 pub struct Instruction(u16);
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:04X}", self.0)
+    }
+}
 
 impl Instruction {
     #[inline]
@@ -59,11 +66,5 @@ impl Instruction {
     #[inline]
     pub fn operand_y(&self) -> usize {
         ((self.0 & 0x00F0) >> (u8::BITS / 2)) as usize
-    }
-}
-
-impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:04X}", self.0)
     }
 }

@@ -1,3 +1,4 @@
+//    Ruschip - a multi-variant CHIP-8 emulator
 //    Copyright (C) 2023 Segmentation Violator <segmentationviolator@proton.me>
 
 //    This program is free software: you can redistribute it and/or modify
@@ -20,7 +21,7 @@ use crate::backend;
 
 #[derive(Debug)]
 pub enum FrontendError {
-    Audio(rodio::PlayError),
+    Audio(rodio::DeviceSinkError),
     Backend(backend::BackendError),
 }
 
@@ -32,7 +33,6 @@ impl FrontendError {
                 backend::BackendErrorKind::MemoryOverflow
                     | backend::BackendErrorKind::ProgramInvalid
                     | backend::BackendErrorKind::ProgramNotLoaded
-                    | backend::BackendErrorKind::DisplayNotConnected
             ),
             _ => true,
         }
