@@ -24,10 +24,9 @@ pub mod interfaces;
 pub use error::{BackendError, BackendErrorKind};
 pub use instruction::Instruction;
 
-pub use chip8::FONT_SIZE as MIN_FONT_SIZE;
 pub use chip8::FONT_SIZE as MAX_FONT_SIZE;
 
-const TIMER_RATE: u128 = 1000/60;
+const TIMER_RATE: u128 = 1000 / 60;
 
 pub enum Backend {
     Chip8(chip8::Backend),
@@ -64,9 +63,14 @@ impl Backend {
         }
     }
 
-    pub fn load(&mut self, font: Option<&[u8]>, program: &[u8]) -> Result<(), BackendError> {
-        match self {
-            Self::Chip8(backend) => backend.load(font, program),
+    pub fn load(&mut self, program: &[u8], font: Option<&[u8]>) -> Result<(), BackendError> {
+        match font {
+            Some(font) => match self {
+                Self::Chip8(backend) => backend.load_with_font(program, font),
+            },
+            None => match self {
+                Self::Chip8(backend) => backend.load(program),
+            },
         }
     }
 
@@ -105,7 +109,10 @@ impl Timer {
     }
 
     pub fn new() -> Self {
-        Self { instant: time::Instant::now(), value: 0 }
+        Self {
+            instant: time::Instant::now(),
+            value: 0,
+        }
     }
 
     pub fn set(&mut self, value: u8) {

@@ -6,17 +6,20 @@
 
 ## Features
 
-- Supports multiple CHIP-8 variants (WIP)
+- Supports multiple variants (WIP)
 - Supports most—if not all—of the quirks, and they can be toggled
 - Supports customization of display colors
 - Supports the loading of custom CHIP-8 fonts
 
 ## Emulator Specifications
 
+### CHIP-8
+
 - Runs @ ~600 instructions per second
-- The CHIP-8 call stack doesn't have a maximum size limit
+- Stack allows at most 16 elements
 
 ## References
+
 [Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)  
 [Octo - Mastering SuperChip](http://johnearnest.github.io/Octo/docs/SuperChip.html)  
 [CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/)  

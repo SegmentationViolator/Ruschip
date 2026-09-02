@@ -20,6 +20,9 @@ use bitvec::view::BitViewSized;
 
 pub struct DisplayBuffer {
     aspect_ratio: f32,
+    #[cfg(target_arch = "wasm32")]
+    buffer: Vec<bitvec::vec::BitVec<u32, bitvec::order::Msb0>>,
+    #[cfg(not(target_arch = "wasm32"))]
     buffer: Vec<bitvec::vec::BitVec<u64, bitvec::order::Msb0>>,
     dirty: bool,
     size: [usize; 2],
@@ -45,11 +48,11 @@ impl DisplayBuffer {
         self.dirty = true;
     }
 
-    pub fn flattened<'a>(
-        &'a mut self,
-    ) -> impl Iterator<Item = bool> + 'a {
+    pub fn flattened<'a>(&'a mut self) -> impl Iterator<Item = bool> + 'a {
         self.dirty = false;
-        self.buffer.iter().flat_map(|bit_array| bit_array.iter().by_vals())
+        self.buffer
+            .iter()
+            .flat_map(|bit_array| bit_array.iter().by_vals())
     }
 
     pub fn draw(&mut self, coordinates: (usize, usize), sprite: &[u8]) -> usize {
@@ -65,7 +68,11 @@ impl DisplayBuffer {
         self.internal_draw(coordinates, sprite)
     }
 
-    fn internal_draw<B: BitViewSized + Copy>(&mut self, coordinates: (usize, usize), sprite: &[B]) -> usize {
+    fn internal_draw<B: BitViewSized + Copy>(
+        &mut self,
+        coordinates: (usize, usize),
+        sprite: &[B],
+    ) -> usize {
         let scaling_factor = if self.halve_resolution { 2 } else { 1 };
 
         let coordinates = (
@@ -157,7 +164,9 @@ impl DisplayBuffer {
             let dest = ptr::from_mut(&mut self.buffer[i + n]);
             let src = &mut self.buffer[i];
 
-            unsafe { (*dest).copy_from_bitslice(src); }
+            unsafe {
+                (*dest).copy_from_bitslice(src);
+            }
 
             if i < n {
                 src.fill(false);
@@ -180,7 +189,7 @@ impl DisplayBuffer {
 
         for i in 0..self.size[1] {
             for j in 0..self.size[0] - n {
-                self.buffer[i].copy_within(j+n..=j+n, j);
+                self.buffer[i].copy_within(j + n..=j + n, j);
 
                 if j + n > self.size[0] - n {
                     let mut buffer_bit = self.buffer[i].get_mut(j + n).unwrap();
@@ -232,7 +241,9 @@ impl DisplayBuffer {
             let dest = ptr::from_mut(&mut self.buffer[i]);
             let src = &mut self.buffer[i + n];
 
-            unsafe { (*dest).copy_from_bitslice(src); }
+            unsafe {
+                (*dest).copy_from_bitslice(src);
+            }
 
             if i < n {
                 src.fill(false);

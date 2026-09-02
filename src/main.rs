@@ -14,6 +14,8 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#![cfg(not(target_arch = "wasm32"))]
+
 const APP_NAME: &str = "ruschip";
 const APP_TITLE: &str = "Ruschip";
 const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
@@ -29,11 +31,6 @@ fn main() -> Result<(), eframe::Error> {
             viewport,
             ..Default::default()
         },
-        Box::new(move |cc| {
-            let backend = ruschip::backend::Backend::default();
-            let display_buffer = backend.default_display_buffer();
-
-            Ok(ruschip::ui::App::new(cc, backend, display_buffer)?)
-        }),
+        Box::new(ruschip::ui::App::new),
     )
 }

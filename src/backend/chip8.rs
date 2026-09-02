@@ -19,10 +19,10 @@ use std::ops;
 
 use crate::defaults;
 
-use super::interfaces::{display_buffer, keypad_state};
 use super::BackendError;
 use super::BackendErrorKind;
 use super::Instruction;
+use super::interfaces::{display_buffer, keypad_state};
 
 pub const DISPLAY_BUFFER_HEIGHT: usize = 32;
 pub const DISPLAY_BUFFER_WIDTH: usize = 64;
@@ -71,7 +71,7 @@ impl Backend {
                             return Err(BackendError {
                                 instruction: Some((index, Some(instruction))),
                                 kind: BackendErrorKind::StackUnderflow,
-                            })
+                            });
                         }
                         Some(address) => self.index = address as usize,
                     };
@@ -221,7 +221,7 @@ impl Backend {
                     return Err(BackendError {
                         instruction: Some((index, Some(instruction))),
                         kind: BackendErrorKind::UnrecognizedInstruction,
-                    })
+                    });
                 }
             },
 
@@ -294,7 +294,7 @@ impl Backend {
                     return Err(BackendError {
                         instruction: Some((index, Some(instruction))),
                         kind: BackendErrorKind::UnrecognizedInstruction,
-                    })
+                    });
                 }
             },
 
@@ -314,8 +314,12 @@ impl Backend {
                     return Ok(ops::ControlFlow::Break(()));
                 }
 
-                0x15 => self.delay.set(self.registers.general[instruction.operand_x()]),
-                0x18 => self.sound.set(self.registers.general[instruction.operand_x()]),
+                0x15 => self
+                    .delay
+                    .set(self.registers.general[instruction.operand_x()]),
+                0x18 => self
+                    .sound
+                    .set(self.registers.general[instruction.operand_x()]),
 
                 0x1E => {
                     self.registers.address = (self.registers.address
@@ -346,7 +350,7 @@ impl Backend {
 
                     let number = self.registers.general[instruction.operand_x()];
 
-                    self.memory[self.registers.address] = (number / 10) / 10;
+                    self.memory[self.registers.address] = number / 100;
                     self.memory[self.registers.address + 1] = (number / 10) % 10;
                     self.memory[self.registers.address + 2] = number % 10;
                 }
@@ -393,7 +397,7 @@ impl Backend {
                     return Err(BackendError {
                         instruction: Some((index, Some(instruction))),
                         kind: BackendErrorKind::UnrecognizedInstruction,
-                    })
+                    });
                 }
             },
 
@@ -401,14 +405,14 @@ impl Backend {
                 return Err(BackendError {
                     instruction: Some((index, Some(instruction))),
                     kind: BackendErrorKind::UnrecognizedInstruction,
-                })
+                });
             }
         }
 
         Ok(ops::ControlFlow::Continue(()))
     }
 
-    pub fn load(&mut self, font: Option<&[u8]>, program: &[u8]) -> Result<(), BackendError> {
+    pub fn load(&mut self, program: &[u8]) -> Result<(), BackendError> {
         if program.len() > MEMORY_SIZE - MEMORY_PADDING {
             return Err(BackendError {
                 instruction: None,
@@ -416,8 +420,7 @@ impl Backend {
             });
         }
 
-        self.memory[..FONT_SIZE]
-            .copy_from_slice(&font.unwrap_or(&defaults::BACKEND_FONT)[..FONT_SIZE]);
+        self.memory[..FONT_SIZE].copy_from_slice(&defaults::BACKEND_FONT[..FONT_SIZE]);
 
         self.memory[MEMORY_PADDING..MEMORY_PADDING + program.len()].copy_from_slice(program);
         self.loaded = true;
@@ -425,9 +428,30 @@ impl Backend {
         Ok(())
     }
 
-    pub fn new(
-        options: super::BackendOptions,
-    ) -> Self {
+    pub fn load_with_font(&mut self, program: &[u8], font: &[u8]) -> Result<(), BackendError> {
+        if program.len() > MEMORY_SIZE - MEMORY_PADDING {
+            return Err(BackendError {
+                instruction: None,
+                kind: BackendErrorKind::ProgramInvalid,
+            });
+        }
+
+        if font.len() < FONT_SIZE {
+            return Err(BackendError {
+                instruction: None,
+                kind: BackendErrorKind::FontInvalid,
+            });
+        }
+
+        self.memory[..FONT_SIZE].copy_from_slice(&font[..FONT_SIZE]);
+
+        self.memory[MEMORY_PADDING..MEMORY_PADDING + program.len()].copy_from_slice(program);
+        self.loaded = true;
+
+        Ok(())
+    }
+
+    pub fn new(options: super::BackendOptions) -> Self {
         Self {
             index: MEMORY_PADDING,
             loaded: false,
@@ -481,7 +505,8 @@ impl Backend {
             let last_index = self.index;
             self.index += mem::size_of::<Instruction>();
 
-            let control_flow = self.execute(last_index, instruction, display_buffer, keyboard_state)?;
+            let control_flow =
+                self.execute(last_index, instruction, display_buffer, keyboard_state)?;
 
             if control_flow.is_break() {
                 break;
@@ -494,13 +519,11 @@ impl Backend {
 
 impl Default for Backend {
     fn default() -> Self {
-        Self::new(
-            super::BackendOptions {
-                copy_and_shift: true,
-                increment_address: true,
-                quirky_jump: false,
-                reset_flag: true,
-            }
-        )
+        Self::new(super::BackendOptions {
+            copy_and_shift: true,
+            increment_address: true,
+            quirky_jump: false,
+            reset_flag: true,
+        })
     }
 }

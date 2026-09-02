@@ -2,19 +2,37 @@
 name = "ruschip"
 version = "0.1.0"
 authors = ["Segmentation Violator <segmentationviolator@proton.me>"]
-edition = "2021"
+edition = "2024"
 description = "a multi-variant CHIP-8 emulator"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-bitvec = { version = "1.1.1" }
-eframe = { version = "0.36.1", default-features = false, features = ["default_fonts", "glow"] }
-rand = "0.10.2"
-rfd = "0.17.2"
+bitvec = "1.1"
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow"] }
+rand = "0.10"
+rfd = "0.17"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.36.1", default-features = false, features = ["wayland"] }
-rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+eframe = { version = "0.36", default-features = false, features = ["wayland"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "HtmlCanvasElement",
+
+    "AudioContext",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "GainNode",
+    "OscillatorNode",
+    "OscillatorType",
+] }
 
 [profile.release]
 opt-level = 3

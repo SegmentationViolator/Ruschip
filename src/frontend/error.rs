@@ -21,6 +21,9 @@ use crate::backend;
 
 #[derive(Debug)]
 pub enum FrontendError {
+    #[cfg(target_arch = "wasm32")]
+    Audio(wasm_bindgen::JsValue),
+    #[cfg(not(target_arch = "wasm32"))]
     Audio(rodio::DeviceSinkError),
     Backend(backend::BackendError),
 }
@@ -42,6 +45,9 @@ impl FrontendError {
 impl fmt::Display for FrontendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(target_arch = "wasm32")]
+            Self::Audio(error) => write!(f, "{:?}", error),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Audio(error) => write!(f, "{}", error),
             Self::Backend(error) => write!(f, "{}", error),
         }

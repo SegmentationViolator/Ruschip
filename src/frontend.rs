@@ -16,7 +16,10 @@
 
 use eframe::egui;
 
-use crate::backend::{self, interfaces::{display_buffer, keypad_state}};
+use crate::backend::{
+    self,
+    interfaces::{display_buffer, keypad_state},
+};
 use crate::defaults;
 
 mod audio;
@@ -31,7 +34,10 @@ pub struct Colors {
 }
 
 pub struct Frontend {
-    audio: audio::RodioAudio,
+    #[cfg(target_arch = "wasm32")]
+    audio: audio::web::WebAudio,
+    #[cfg(not(target_arch = "wasm32"))]
+    audio: audio::rodio::RodioAudio,
     pub backend: backend::Backend,
     pub colors: Colors,
     pub display_buffer: display_buffer::DisplayBuffer,
@@ -59,8 +65,10 @@ impl Frontend {
         backend: backend::Backend,
         mut display_buffer: display_buffer::DisplayBuffer,
     ) -> Result<Self, FrontendError> {
-        let audio = audio::RodioAudio::new()
-            .map_err(FrontendError::Audio)?;
+        #[cfg(target_arch = "wasm32")]
+        let audio = audio::web::WebAudio::new().map_err(FrontendError::Audio)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let audio = audio::rodio::RodioAudio::new().map_err(FrontendError::Audio)?;
 
         let pixels: Vec<egui::Color32> = display_buffer
             .flattened()
@@ -91,15 +99,13 @@ impl Frontend {
         self.audio.set_enabled(false);
     }
 
-    pub fn tick(
-        &mut self,
-    ) -> Result<(), FrontendError> {
+    pub fn tick(&mut self) -> Result<(), FrontendError> {
         self.audio.set_enabled(self.backend.sound() > 0);
 
-        match self.backend.tick(
-            &mut self.display_buffer,
-            &mut self.keypad_state,
-        ) {
+        match self
+            .backend
+            .tick(&mut self.display_buffer, &mut self.keypad_state)
+        {
             Ok(_) => (),
             Err(error) => {
                 return Err(FrontendError::Backend(error));
@@ -121,10 +127,7 @@ impl Frontend {
             .collect();
 
         self.display_texture.set(
-            egui::ColorImage::new(
-                self.display_buffer.size(),
-                pixels,
-            ),
+            egui::ColorImage::new(self.display_buffer.size(), pixels),
             egui::TextureOptions::NEAREST,
         );
 
