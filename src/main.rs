@@ -54,6 +54,8 @@ fn main() -> Result<(), JsValue> {
         .ok_or_else(|| JsValue::from_str("Ruschip canvas is missing"))?
         .dyn_into::<web_sys::HtmlCanvasElement>()?;
 
+    let _ = window.alert_with_message("Click OK to enable sound.");
+
     wasm_bindgen_futures::spawn_local(async move {
         if let Err(error) = ruschip::web::start(canvas).await {
             web_sys::console::error_1(&error);
