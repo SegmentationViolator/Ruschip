@@ -239,6 +239,7 @@
                     checks = self.checks.${system};
 
                     packages = with web.${system}.pkgs; [
+                        binaryen
                         dart-sass
                         trunk
                         wasm-bindgen-cli_0_2_126
