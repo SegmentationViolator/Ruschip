@@ -146,6 +146,7 @@
                         fileset = pkgs.lib.fileset.unions [
                             (craneLib.fileset.commonCargoSources unfilteredRoot)
                             (pkgs.lib.fileset.fromSource ./assets)
+                            (pkgs.lib.fileset.fromSource ./index.html)
                         ];
                     };
 
@@ -198,8 +199,8 @@
                     web.${system}.cargoArguments
                     // {
                         cargoArtifacts = web.${system}.cargoArtifacts;
-                        trunkExtraBuildArgs = "--filehash=false -minify=true";
-                        inherit (web.${system}.pkgs) wasm-bindgen-cli_0_2_126;
+                        trunkExtraBuildArgs = "--minify=true";
+                        inherit (web.${system}.pkgs) wasm-bindgen-cli_0_2_127;
                     }
                 );
             });
@@ -242,7 +243,7 @@
                         binaryen
                         dart-sass
                         trunk
-                        wasm-bindgen-cli_0_2_126
+                        wasm-bindgen-cli_0_2_127
                     ];
                 };
             });
