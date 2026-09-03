@@ -27,9 +27,9 @@ pub struct BackendError {
 
 #[derive(Debug)]
 pub enum BackendErrorKind {
-    FontInvalid,
+    InvalidFont,
+    InvalidProgram,
     MemoryOverflow,
-    ProgramInvalid,
     ProgramNotLoaded,
     StackOverflow,
     StackUnderflow,
@@ -58,9 +58,9 @@ impl fmt::Display for BackendErrorKind {
             f,
             "{}",
             match self {
-                Self::FontInvalid => "attempt tp load invalid font",
+                Self::InvalidFont => "attempt to load invalid font",
+                Self::InvalidProgram => "attempt to load invalid program",
                 Self::MemoryOverflow => "attempt to access invalid memory address",
-                Self::ProgramInvalid => "attempt to load invalid program",
                 Self::ProgramNotLoaded => "attempt to run without loading any program",
                 Self::StackOverflow => "attempt to call a coroutine when the stack is full",
                 Self::StackUnderflow => "attempt to return when the stack is empty",

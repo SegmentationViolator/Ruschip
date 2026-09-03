@@ -34,7 +34,7 @@ impl FrontendError {
             Self::Backend(error) => matches!(
                 error.kind,
                 backend::BackendErrorKind::MemoryOverflow
-                    | backend::BackendErrorKind::ProgramInvalid
+                    | backend::BackendErrorKind::InvalidProgram
                     | backend::BackendErrorKind::ProgramNotLoaded
             ),
             _ => true,

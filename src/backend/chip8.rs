@@ -166,52 +166,48 @@ impl Backend {
                 }
 
                 code @ (0x5 | 0x7) => {
-                    let flag;
-                    let result;
+                    
+                    
 
-                    match code {
+                    let (result, flag) = match code {
                         0x5 => {
-                            result = self.registers.general[instruction.operand_x()]
-                                .wrapping_sub(self.registers.general[instruction.operand_y()]);
-                            flag = self.registers.general[instruction.operand_x()]
-                                >= self.registers.general[instruction.operand_y()];
+                            (self.registers.general[instruction.operand_x()]
+                                .wrapping_sub(self.registers.general[instruction.operand_y()]), self.registers.general[instruction.operand_x()]
+                                >= self.registers.general[instruction.operand_y()])
                         }
 
                         0x7 => {
-                            result = self.registers.general[instruction.operand_y()]
-                                .wrapping_sub(self.registers.general[instruction.operand_x()]);
-                            flag = self.registers.general[instruction.operand_y()]
-                                >= self.registers.general[instruction.operand_x()];
+                            (self.registers.general[instruction.operand_y()]
+                                .wrapping_sub(self.registers.general[instruction.operand_x()]), self.registers.general[instruction.operand_y()]
+                                >= self.registers.general[instruction.operand_x()])
                         }
 
                         _ => unreachable!(),
-                    }
+                    };
 
                     self.registers.general[instruction.operand_x()] = result;
                     self.registers.general[15] = flag as u8;
                 }
 
                 code @ (0x6 | 0xE) => {
-                    let flag;
-                    let result;
+                    
+                    
 
                     if self.options.copy_and_shift {
                         self.registers.general[instruction.operand_x()] =
                             self.registers.general[instruction.operand_y()]
                     }
 
-                    match code {
+                    let (result, flag) = match code {
                         0x6 => {
-                            result = self.registers.general[instruction.operand_x()] >> 1;
-                            flag = self.registers.general[instruction.operand_x()] & 1;
+                            (self.registers.general[instruction.operand_x()] >> 1, self.registers.general[instruction.operand_x()] & 1)
                         }
                         0xE => {
-                            result = self.registers.general[instruction.operand_x()] << 1;
-                            flag = self.registers.general[instruction.operand_x()]
-                                >> (u8::BITS - 1) as u8;
+                            (self.registers.general[instruction.operand_x()] << 1, self.registers.general[instruction.operand_x()]
+                                >> (u8::BITS - 1) as u8)
                         }
                         _ => unreachable!(),
-                    }
+                    };
 
                     self.registers.general[instruction.operand_x()] = result;
                     self.registers.general[15] = flag;
@@ -416,7 +412,7 @@ impl Backend {
         if program.len() > MEMORY_SIZE - MEMORY_PADDING {
             return Err(BackendError {
                 instruction: None,
-                kind: BackendErrorKind::ProgramInvalid,
+                kind: BackendErrorKind::InvalidProgram,
             });
         }
 
@@ -432,14 +428,14 @@ impl Backend {
         if program.len() > MEMORY_SIZE - MEMORY_PADDING {
             return Err(BackendError {
                 instruction: None,
-                kind: BackendErrorKind::ProgramInvalid,
+                kind: BackendErrorKind::InvalidProgram,
             });
         }
 
         if font.len() < FONT_SIZE {
             return Err(BackendError {
                 instruction: None,
-                kind: BackendErrorKind::FontInvalid,
+                kind: BackendErrorKind::InvalidFont,
             });
         }
 
