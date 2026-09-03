@@ -16,13 +16,16 @@
 
 #![cfg(target_arch = "wasm32")]
 
+use std::sync;
+
 use wasm_bindgen::prelude::*;
 
 pub struct WebAudio {
     _context: web_sys::AudioContext,
-    _oscillator: web_sys::OscillatorNode,
-    gain: web_sys::GainNode,
     enabled: bool,
+    gain: web_sys::GainNode,
+    once_lock: sync::OnceLock<()>,
+    oscillator: web_sys::OscillatorNode,
 }
 
 impl WebAudio {
@@ -39,17 +42,22 @@ impl WebAudio {
         oscillator.connect_with_audio_node(&gain)?;
         gain.connect_with_audio_node(&context.destination())?;
 
-        oscillator.start()?;
-
         Ok(Self {
             _context: context,
-            _oscillator: oscillator,
-            gain,
             enabled: false,
+            gain,
+            once_lock: sync::OnceLock::new(),
+            oscillator,
         })
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
+        self.once_lock.get_or_init(|| {
+            if let Err(e) = self.oscillator.start() {
+                web_sys::console::error_1(&e);
+            }
+        });
+
         if self.enabled == enabled {
             return;
         }
