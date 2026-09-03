@@ -30,6 +30,12 @@ enum KeyState {
     Released,
 }
 
+impl Default for KeypadState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeypadState {
     pub fn new() -> Self {
         Self {

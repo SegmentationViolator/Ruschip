@@ -103,6 +103,12 @@ impl Backend {
     }
 }
 
+impl Default for Timer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Timer {
     pub fn get(&self) -> u8 {
         (self.value as u128).saturating_sub(self.instant.elapsed().as_millis() / TIMER_RATE) as u8
