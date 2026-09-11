@@ -106,23 +106,23 @@ impl eframe::App for App {
             MenuState::Inactive => (),
         }
 
-        let viewport = ui.ctx().viewport_rect();
+        let available = ui.available_size();
+        let buffer_ratio = self.frontend.display_buffer.aspect_ratio();
 
-        let size = if viewport.aspect_ratio() <= self.frontend.display_buffer.aspect_ratio()
-            && viewport.aspect_ratio() > 1.0
-        {
-            viewport.size()
+        let size = if available.x / available.y <= buffer_ratio {
+            egui::vec2(
+                available.x,
+                available.x / buffer_ratio,
+            )
         } else {
             egui::vec2(
-                viewport.width(),
-                viewport.width() / self.frontend.display_buffer.aspect_ratio(),
+                available.y * buffer_ratio,
+                available.y,
             )
         };
 
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.add(egui::Image::new((self.display_texture, size)));
-            })
+        ui.centered_and_justified(|ui| {
+            ui.add(egui::Image::new((self.display_texture, size)));
         });
     }
 }
