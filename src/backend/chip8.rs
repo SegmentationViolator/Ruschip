@@ -15,7 +15,6 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::mem;
-use std::ops;
 
 use crate::defaults;
 
@@ -27,13 +26,13 @@ use super::interfaces::{display_buffer, keypad_state};
 pub const DISPLAY_BUFFER_HEIGHT: usize = 32;
 pub const DISPLAY_BUFFER_WIDTH: usize = 64;
 pub const FONT_SIZE: usize = CHARACTER_SIZE * keypad_state::KEY_COUNT;
-pub const TICK_RATE: usize = 15;
+pub const TICK_RATE: f64 = 1000. / 700.;
 
 pub(super) const CHARACTER_SIZE: usize = 5;
 const MEMORY_PADDING: usize = 512;
 const MEMORY_SIZE: usize = 4096;
 const REGISTER_COUNT: usize = 16;
-const STACK_SIZE: usize = 16;
+const STACK_SIZE: usize = 12;
 
 pub struct Backend {
     pub(super) index: usize,
@@ -47,7 +46,7 @@ pub struct Backend {
 }
 
 pub(super) struct Registers {
-    pub address: usize,
+    pub address: u16,
     pub general: [u8; REGISTER_COUNT],
 }
 
@@ -58,7 +57,7 @@ impl Backend {
         instruction: Instruction,
         display_buffer: &mut display_buffer::DisplayBuffer,
         keypad_state: &mut keypad_state::KeypadState,
-    ) -> Result<ops::ControlFlow<()>, BackendError> {
+    ) -> Result<bool, BackendError> {
         match instruction.operator_code() {
             0x0 => match instruction.operand_nnn() {
                 0x0E0 => {
@@ -93,46 +92,48 @@ impl Backend {
                     self.stack.push(self.index as u16);
                 }
 
-                self.index = instruction.operand_nnn();
+                self.index = instruction.operand_nnn() as usize;
             }
 
             opcode @ (0x3 | 0x4 | 0x5 | 0x9) => {
                 match opcode {
-                    0x3 if self.registers.general[instruction.operand_x()]
+                    0x3 if self.registers.general[instruction.operand_x() as usize]
                         == instruction.operand_nn() => {}
 
-                    0x4 if self.registers.general[instruction.operand_x()]
+                    0x4 if self.registers.general[instruction.operand_x() as usize]
                         != instruction.operand_nn() => {}
 
-                    0x5 if self.registers.general[instruction.operand_x()]
-                        == self.registers.general[instruction.operand_y()] => {}
+                    0x5 if self.registers.general[instruction.operand_x() as usize]
+                        == self.registers.general[instruction.operand_y() as usize] => {}
 
-                    0x9 if self.registers.general[instruction.operand_x()]
-                        != self.registers.general[instruction.operand_y()] => {}
+                    0x9 if self.registers.general[instruction.operand_x() as usize]
+                        != self.registers.general[instruction.operand_y() as usize] => {}
 
-                    _ => return Ok(ops::ControlFlow::Continue(())),
+                    _ => return Ok(false),
                 }
 
                 self.index += mem::size_of::<Instruction>();
             }
 
-            0x6 => self.registers.general[instruction.operand_x()] = instruction.operand_nn(),
+            0x6 => {
+                self.registers.general[instruction.operand_x() as usize] = instruction.operand_nn()
+            }
 
             0x7 => {
-                self.registers.general[instruction.operand_x()] = self.registers.general
-                    [instruction.operand_x()]
-                .wrapping_add(instruction.operand_nn())
+                self.registers.general[instruction.operand_x() as usize] = self.registers.general
+                    [instruction.operand_x() as usize]
+                    .wrapping_add(instruction.operand_nn())
             }
 
             0x8 => match instruction.operand_n() {
                 0x0 => {
-                    self.registers.general[instruction.operand_x()] =
-                        self.registers.general[instruction.operand_y()]
+                    self.registers.general[instruction.operand_x() as usize] =
+                        self.registers.general[instruction.operand_y() as usize]
                 }
 
                 0x1 => {
-                    self.registers.general[instruction.operand_x()] |=
-                        self.registers.general[instruction.operand_y()];
+                    self.registers.general[instruction.operand_x() as usize] |=
+                        self.registers.general[instruction.operand_y() as usize];
 
                     if self.options.reset_flag {
                         self.registers.general[15] = 0;
@@ -140,8 +141,8 @@ impl Backend {
                 }
 
                 0x2 => {
-                    self.registers.general[instruction.operand_x()] &=
-                        self.registers.general[instruction.operand_y()];
+                    self.registers.general[instruction.operand_x() as usize] &=
+                        self.registers.general[instruction.operand_y() as usize];
 
                     if self.options.reset_flag {
                         self.registers.general[15] = 0;
@@ -149,8 +150,8 @@ impl Backend {
                 }
 
                 0x3 => {
-                    self.registers.general[instruction.operand_x()] ^=
-                        self.registers.general[instruction.operand_y()];
+                    self.registers.general[instruction.operand_x() as usize] ^=
+                        self.registers.general[instruction.operand_y() as usize];
 
                     if self.options.reset_flag {
                         self.registers.general[15] = 0;
@@ -158,58 +159,58 @@ impl Backend {
                 }
 
                 0x4 => {
-                    let (result, flag) = self.registers.general[instruction.operand_x()]
-                        .overflowing_add(self.registers.general[instruction.operand_y()]);
+                    let (result, flag) = self.registers.general[instruction.operand_x() as usize]
+                        .overflowing_add(self.registers.general[instruction.operand_y() as usize]);
 
-                    self.registers.general[instruction.operand_x()] = result;
+                    self.registers.general[instruction.operand_x() as usize] = result;
                     self.registers.general[15] = flag as u8;
                 }
 
                 code @ (0x5 | 0x7) => {
-                    
-                    
-
                     let (result, flag) = match code {
-                        0x5 => {
-                            (self.registers.general[instruction.operand_x()]
-                                .wrapping_sub(self.registers.general[instruction.operand_y()]), self.registers.general[instruction.operand_x()]
-                                >= self.registers.general[instruction.operand_y()])
-                        }
+                        0x5 => (
+                            self.registers.general[instruction.operand_x() as usize].wrapping_sub(
+                                self.registers.general[instruction.operand_y() as usize],
+                            ),
+                            self.registers.general[instruction.operand_x() as usize]
+                                >= self.registers.general[instruction.operand_y() as usize],
+                        ),
 
-                        0x7 => {
-                            (self.registers.general[instruction.operand_y()]
-                                .wrapping_sub(self.registers.general[instruction.operand_x()]), self.registers.general[instruction.operand_y()]
-                                >= self.registers.general[instruction.operand_x()])
-                        }
+                        0x7 => (
+                            self.registers.general[instruction.operand_y() as usize].wrapping_sub(
+                                self.registers.general[instruction.operand_x() as usize],
+                            ),
+                            self.registers.general[instruction.operand_y() as usize]
+                                >= self.registers.general[instruction.operand_x() as usize],
+                        ),
 
                         _ => unreachable!(),
                     };
 
-                    self.registers.general[instruction.operand_x()] = result;
+                    self.registers.general[instruction.operand_x() as usize] = result;
                     self.registers.general[15] = flag as u8;
                 }
 
                 code @ (0x6 | 0xE) => {
-                    
-                    
-
                     if self.options.copy_and_shift {
-                        self.registers.general[instruction.operand_x()] =
-                            self.registers.general[instruction.operand_y()]
+                        self.registers.general[instruction.operand_x() as usize] =
+                            self.registers.general[instruction.operand_y() as usize]
                     }
 
                     let (result, flag) = match code {
-                        0x6 => {
-                            (self.registers.general[instruction.operand_x()] >> 1, self.registers.general[instruction.operand_x()] & 1)
-                        }
-                        0xE => {
-                            (self.registers.general[instruction.operand_x()] << 1, self.registers.general[instruction.operand_x()]
-                                >> (u8::BITS - 1) as u8)
-                        }
+                        0x6 => (
+                            self.registers.general[instruction.operand_x() as usize] >> 1,
+                            self.registers.general[instruction.operand_x() as usize] & 1,
+                        ),
+                        0xE => (
+                            self.registers.general[instruction.operand_x() as usize] << 1,
+                            self.registers.general[instruction.operand_x() as usize]
+                                >> (u8::BITS - 1) as u8,
+                        ),
                         _ => unreachable!(),
                     };
 
-                    self.registers.general[instruction.operand_x()] = result;
+                    self.registers.general[instruction.operand_x() as usize] = result;
                     self.registers.general[15] = flag;
                 }
 
@@ -224,19 +225,23 @@ impl Backend {
             0xA => self.registers.address = instruction.operand_nnn(),
 
             0xB => {
-                self.index = self.registers.general
-                    [[0, instruction.operand_x()][self.options.quirky_jump as usize]]
-                    as usize
-                    + instruction.operand_nnn()
+                self.index = if self.options.quirky_jump {
+                    self.registers.general[instruction.operand_x() as usize] as usize
+                        + instruction.operand_nn() as usize
+                } else {
+                    self.registers.general[0] as usize + instruction.operand_nnn() as usize
+                }
             }
 
             0xC => {
-                self.registers.general[instruction.operand_x()] =
+                self.registers.general[instruction.operand_x() as usize] =
                     rand::random::<u8>() & instruction.operand_nn();
             }
 
             0xD => {
-                if self.registers.address + instruction.operand_n() as usize >= self.memory.len() {
+                if self.registers.address as usize + instruction.operand_n() as usize
+                    >= self.memory.len()
+                {
                     return Err(BackendError {
                         instruction: Some((index, Some(instruction))),
                         kind: BackendErrorKind::MemoryOverflow,
@@ -245,21 +250,21 @@ impl Backend {
 
                 let colliding_rows = display_buffer.draw(
                     (
-                        self.registers.general[instruction.operand_x()] as usize,
-                        self.registers.general[instruction.operand_y()] as usize,
+                        self.registers.general[instruction.operand_x() as usize] as usize,
+                        self.registers.general[instruction.operand_y() as usize] as usize,
                     ),
-                    &self.memory[self.registers.address
-                        ..self.registers.address + instruction.operand_n() as usize],
+                    &self.memory[self.registers.address as usize
+                        ..self.registers.address as usize + instruction.operand_n() as usize],
                 );
 
                 self.registers.general[15] = (colliding_rows > 0) as u8;
 
-                return Ok(ops::ControlFlow::Break(()));
+                return Ok(true);
             }
 
             0xE => match instruction.operand_nn() {
                 0x9E => {
-                    let key = self.registers.general[instruction.operand_x()] as usize;
+                    let key = self.registers.general[instruction.operand_x() as usize] as usize;
                     if key >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
@@ -273,7 +278,7 @@ impl Backend {
                 }
 
                 0xA1 => {
-                    let key = self.registers.general[instruction.operand_x()] as usize;
+                    let key = self.registers.general[instruction.operand_x() as usize] as usize;
                     if key >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
@@ -295,36 +300,37 @@ impl Backend {
             },
 
             0xF => match instruction.operand_nn() {
-                0x07 => self.registers.general[instruction.operand_x()] = self.delay.get(),
+                0x07 => self.registers.general[instruction.operand_x() as usize] = self.delay.get(),
 
                 0x0A => {
                     match keypad_state.pressed_key() {
                         Some(key) => {
-                            self.registers.general[instruction.operand_x()] = key as u8;
+                            self.registers.general[instruction.operand_x() as usize] = key as u8;
                         }
                         None => {
                             self.index = index;
                         }
                     }
 
-                    return Ok(ops::ControlFlow::Break(()));
+                    return Ok(true);
                 }
 
                 0x15 => self
                     .delay
-                    .set(self.registers.general[instruction.operand_x()]),
+                    .set(self.registers.general[instruction.operand_x() as usize]),
                 0x18 => self
                     .sound
-                    .set(self.registers.general[instruction.operand_x()]),
+                    .set(self.registers.general[instruction.operand_x() as usize]),
 
                 0x1E => {
                     self.registers.address = (self.registers.address
-                        + self.registers.general[instruction.operand_x()] as usize)
+                        + self.registers.general[instruction.operand_x() as usize] as u16)
                         & 0xFFF
                 }
 
                 0x29 => {
-                    let character_code = self.registers.general[instruction.operand_x()] as usize;
+                    let character_code =
+                        self.registers.general[instruction.operand_x() as usize] as usize;
 
                     if character_code >= keypad_state::KEY_COUNT {
                         return Err(BackendError {
@@ -333,28 +339,28 @@ impl Backend {
                         });
                     }
 
-                    self.registers.address = character_code * CHARACTER_SIZE;
+                    self.registers.address = (character_code * CHARACTER_SIZE) as u16;
                 }
 
                 0x33 => {
-                    if self.registers.address + 2 >= self.memory.len() {
+                    if self.registers.address as usize + 2 >= self.memory.len() {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
                             kind: BackendErrorKind::MemoryOverflow,
                         });
                     }
 
-                    let number = self.registers.general[instruction.operand_x()];
+                    let number = self.registers.general[instruction.operand_x() as usize];
 
-                    self.memory[self.registers.address] = number / 100;
-                    self.memory[self.registers.address + 1] = (number / 10) % 10;
-                    self.memory[self.registers.address + 2] = number % 10;
+                    self.memory[self.registers.address as usize] = number / 100;
+                    self.memory[self.registers.address as usize + 1] = (number / 10) % 10;
+                    self.memory[self.registers.address as usize + 2] = number % 10;
                 }
 
                 0x55 => {
-                    let x = instruction.operand_x();
+                    let x = instruction.operand_x() as usize;
 
-                    if self.registers.address + x >= self.memory.len() {
+                    if self.registers.address as usize + x >= self.memory.len() {
                         return Err(BackendError {
                             instruction: Some((index, Some(instruction))),
                             kind: BackendErrorKind::MemoryOverflow,
@@ -362,18 +368,19 @@ impl Backend {
                     }
 
                     for i in 0..x + 1 {
-                        self.memory[self.registers.address + i] = self.registers.general[i];
+                        self.memory[self.registers.address as usize + i] =
+                            self.registers.general[i];
                     }
 
                     if self.options.increment_address {
-                        self.registers.address += x + 1;
+                        self.registers.address += x as u16 + 1;
                     }
                 }
 
                 0x65 => {
-                    let x = instruction.operand_x();
+                    let x = instruction.operand_x() as usize;
 
-                    if self.registers.address + x >= self.memory.len() {
+                    if self.registers.address as usize + x >= self.memory.len() {
                         return Err(BackendError {
                             instruction: Some((self.index, Some(instruction))),
                             kind: BackendErrorKind::MemoryOverflow,
@@ -381,11 +388,12 @@ impl Backend {
                     }
 
                     for i in 0..x + 1 {
-                        self.registers.general[i] = self.memory[self.registers.address + i];
+                        self.registers.general[i] =
+                            self.memory[self.registers.address as usize + i];
                     }
 
                     if self.options.increment_address {
-                        self.registers.address += x + 1;
+                        self.registers.address += x as u16 + 1;
                     }
                 }
 
@@ -405,7 +413,7 @@ impl Backend {
             }
         }
 
-        Ok(ops::ControlFlow::Continue(()))
+        Ok(false)
     }
 
     pub fn load(&mut self, program: &[u8]) -> Result<(), BackendError> {
@@ -479,7 +487,7 @@ impl Backend {
         &mut self,
         display_buffer: &mut display_buffer::DisplayBuffer,
         keyboard_state: &mut keypad_state::KeypadState,
-    ) -> Result<(), BackendError> {
+    ) -> Result<bool, BackendError> {
         if !self.loaded {
             return Err(BackendError {
                 instruction: None,
@@ -487,29 +495,19 @@ impl Backend {
             });
         }
 
-        for _ in 0..TICK_RATE {
-            if self.index + 1 >= self.memory.len() {
-                return Err(BackendError {
-                    instruction: Some((self.index, None)),
-                    kind: BackendErrorKind::MemoryOverflow,
-                });
-            }
-
-            let instruction =
-                Instruction::new([self.memory[self.index], self.memory[self.index + 1]]);
-
-            let last_index = self.index;
-            self.index += mem::size_of::<Instruction>();
-
-            let control_flow =
-                self.execute(last_index, instruction, display_buffer, keyboard_state)?;
-
-            if control_flow.is_break() {
-                break;
-            }
+        if self.index + 1 >= self.memory.len() {
+            return Err(BackendError {
+                instruction: Some((self.index, None)),
+                kind: BackendErrorKind::MemoryOverflow,
+            });
         }
 
-        Ok(())
+        let instruction = Instruction::new([self.memory[self.index], self.memory[self.index + 1]]);
+
+        let last_index = self.index;
+        self.index += mem::size_of::<Instruction>();
+
+        self.execute(last_index, instruction, display_buffer, keyboard_state)
     }
 }
 

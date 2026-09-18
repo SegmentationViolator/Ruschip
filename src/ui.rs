@@ -28,13 +28,11 @@ mod menu;
 
 pub(crate) const PRIMARY_COLOR: egui::Color32 = egui::Color32::from_rgb(0x81, 0x5B, 0xA4); // #815BA4
 pub(crate) const SECONDARY_COLOR: egui::Color32 = egui::Color32::from_rgb(0x1C, 0x1C, 0x1C); // #1C1C1C
-const TICK_INTERVAL: time::Duration = time::Duration::from_millis(1000 / 60);
 
 pub struct App {
     display_texture: egui::TextureId,
     file_picker: file_picker::FilePicker,
     frontend: frontend::Frontend,
-    last_frame: time::Instant,
     state: AppState,
 }
 
@@ -77,27 +75,21 @@ impl eframe::App for App {
 
         ctx.input(|input| self.frontend.keypad_state.update(input));
 
-        let ticks = self.last_frame.elapsed().as_millis() / TICK_INTERVAL.as_millis();
+        if let Err(error) = self.frontend.tick() {
+            if error.is_fatal() {
+                self.state.error.timestamp = time::Instant::now();
+                self.state.error.message.clear();
+                let _ = write!(self.state.error.message, "fatal error, {}", error);
 
-        for _ in 0..ticks {
-            if let Err(error) = self.frontend.tick() {
-                if error.is_fatal() {
-                    self.state.error.timestamp = time::Instant::now();
-                    self.state.error.message.clear();
-                    let _ = write!(self.state.error.message, "fatal error, {}", error);
-
-                    self.state.emulation = EmulationState::Stopped;
-                    self.state.menu = MenuState::Configuration;
-                    ctx.request_repaint();
-                    return;
-                }
-
-                eprintln!("{}", error);
+                self.frontend.suspend();
+                self.state.emulation = EmulationState::Stopped;
+                self.state.menu = MenuState::Configuration;
             }
+
+            eprintln!("{}", error);
         }
 
-        self.last_frame = time::Instant::now();
-        ctx.request_repaint_after(TICK_INTERVAL);
+        ctx.request_repaint();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -110,15 +102,9 @@ impl eframe::App for App {
         let buffer_ratio = self.frontend.display_buffer.aspect_ratio();
 
         let size = if available.x / available.y <= buffer_ratio {
-            egui::vec2(
-                available.x,
-                available.x / buffer_ratio,
-            )
+            egui::vec2(available.x, available.x / buffer_ratio)
         } else {
-            egui::vec2(
-                available.y * buffer_ratio,
-                available.y,
-            )
+            egui::vec2(available.y * buffer_ratio, available.y)
         };
 
         ui.centered_and_justified(|ui| {
@@ -161,7 +147,7 @@ impl App {
         cc: &eframe::CreationContext,
     ) -> Result<Box<dyn eframe::App>, Box<dyn Error + Send + Sync>> {
         let backend = backend::Backend::default();
-        let display_buffer = backend.default_display_buffer();
+        let display_buffer = backend.create_display_buffer();
 
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.button_padding.y = 8.0;
@@ -213,7 +199,6 @@ impl App {
             display_texture: frontend.display_texture(),
             file_picker: file_picker::FilePicker::new(),
             frontend,
-            last_frame: time::Instant::now(),
             state,
         }))
     }

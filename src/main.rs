@@ -44,7 +44,6 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-
 #[cfg(target_arch = "wasm32")]
 fn main() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;

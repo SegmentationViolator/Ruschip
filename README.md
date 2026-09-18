@@ -15,8 +15,8 @@
 
 ### CHIP-8
 
-- Runs @ ~600 instructions per second
-- Stack allows at most 16 elements
+- Runs @ ~700 instructions per second
+- Stack allows at most 12 elements
 
 ## References
 

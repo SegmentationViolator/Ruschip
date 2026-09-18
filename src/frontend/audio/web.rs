@@ -63,6 +63,8 @@ impl WebAudio {
         }
 
         self.enabled = enabled;
-        self.gain.gain().set_value(if enabled { super::BEEP_AMPLITUDE } else { 0.0 });
+        self.gain
+            .gain()
+            .set_value(if enabled { super::BEEP_AMPLITUDE } else { 0.0 });
     }
 }

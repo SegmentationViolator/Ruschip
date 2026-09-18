@@ -51,7 +51,7 @@ impl Default for Backend {
 }
 
 impl Backend {
-    pub fn default_display_buffer(&self) -> interfaces::display_buffer::DisplayBuffer {
+    pub fn create_display_buffer(&self) -> interfaces::display_buffer::DisplayBuffer {
         match self {
             Self::Chip8(..) => interfaces::display_buffer::DisplayBuffer::new(
                 [chip8::DISPLAY_BUFFER_WIDTH, chip8::DISPLAY_BUFFER_HEIGHT],
@@ -90,9 +90,15 @@ impl Backend {
         &mut self,
         display_buffer: &mut interfaces::display_buffer::DisplayBuffer,
         keypad_state: &mut interfaces::keypad_state::KeypadState,
-    ) -> Result<(), BackendError> {
+    ) -> Result<bool, BackendError> {
         match self {
             Self::Chip8(backend) => backend.tick(display_buffer, keypad_state),
+        }
+    }
+
+    pub fn tick_rate(&self) -> f64 {
+        match self {
+            Self::Chip8(..) => chip8::TICK_RATE,
         }
     }
 

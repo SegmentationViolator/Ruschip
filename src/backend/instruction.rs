@@ -29,7 +29,7 @@ impl fmt::Display for Instruction {
 
 impl Instruction {
     #[inline]
-    pub fn new(be_bytes: [u8; mem::size_of::<Self>()]) -> Self {
+    pub fn new(be_bytes: [u8; mem::size_of::<u16>()]) -> Self {
         Self(u16::from_be_bytes(be_bytes))
     }
 
@@ -49,22 +49,22 @@ impl Instruction {
     }
 
     #[inline]
-    pub fn operand_nnn(&self) -> usize {
-        (self.0 & 0x0FFF) as usize
+    pub fn operand_nnn(&self) -> u16 {
+        self.0 & 0x0FFF
     }
 
     #[inline]
-    pub fn operand_x(&self) -> usize {
-        ((self.0 & 0x0F00) >> u8::BITS) as usize
+    pub fn operand_x(&self) -> u8 {
+        ((self.0 & 0x0F00) >> u8::BITS) as u8
     }
 
     #[inline]
-    pub fn operand_xy(&self) -> usize {
-        ((self.0 & 0x0FF0) >> (u8::BITS / 2)) as usize
+    pub fn operand_xy(&self) -> u8 {
+        ((self.0 & 0x0FF0) >> (u8::BITS / 2)) as u8
     }
 
     #[inline]
-    pub fn operand_y(&self) -> usize {
-        ((self.0 & 0x00F0) >> (u8::BITS / 2)) as usize
+    pub fn operand_y(&self) -> u8 {
+        ((self.0 & 0x00F0) >> (u8::BITS / 2)) as u8
     }
 }

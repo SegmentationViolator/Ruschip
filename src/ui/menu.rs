@@ -90,7 +90,7 @@ impl App {
         ),
         (
             "Increment Address",
-            " Increment the address register after executing SAVE and LOAD instructions",
+            "Increment the address register after executing SAVE and LOAD instructions",
             QuirkSelection::IncrementAddress,
         ),
         (
@@ -275,6 +275,7 @@ impl App {
                                             ui.add_space(menu_spacing);
 
                                             if ui.button("■ Stop").clicked() {
+                                                self.frontend.suspend();
                                                 self.state.emulation = EmulationState::Stopped;
                                             }
                                         },

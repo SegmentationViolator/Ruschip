@@ -62,13 +62,13 @@ impl DisplayBuffer {
                 .map(|pair| u16::from_be_bytes(pair.try_into().unwrap()))
                 .collect();
 
-            return self.internal_draw(coordinates, &sprite_16x16);
+            return self.draw_sprite(coordinates, &sprite_16x16);
         }
 
-        self.internal_draw(coordinates, sprite)
+        self.draw_sprite(coordinates, sprite)
     }
 
-    fn internal_draw<B: BitViewSized + Copy>(
+    fn draw_sprite<B: BitViewSized + Copy>(
         &mut self,
         coordinates: (usize, usize),
         sprite: &[B],

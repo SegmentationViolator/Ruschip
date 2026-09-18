@@ -15,6 +15,7 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use eframe::egui;
+use web_time as time;
 
 use crate::backend::{
     self,
@@ -43,6 +44,7 @@ pub struct Frontend {
     pub display_buffer: display_buffer::DisplayBuffer,
     display_texture: egui::TextureHandle,
     pub keypad_state: keypad_state::KeypadState,
+    last_tick: Option<time::Instant>,
 }
 
 impl Colors {
@@ -86,31 +88,43 @@ impl Frontend {
             ),
             display_buffer,
             keypad_state: keypad_state::KeypadState::new(),
+            last_tick: None,
         })
     }
 
     pub fn reset(&mut self) {
         self.backend.reset();
         self.display_buffer.clear();
-        self.audio.set_enabled(false);
+        self.suspend();
     }
 
     pub fn suspend(&mut self) {
         self.audio.set_enabled(false);
+        self.last_tick = None;
     }
 
     pub fn tick(&mut self) -> Result<(), FrontendError> {
         self.audio.set_enabled(self.backend.sound() > 0);
+        let pending_ticks = self
+            .last_tick
+            .map(|instant| instant.elapsed().as_millis())
+            .unwrap_or(1000) as f64
+            / self.backend.tick_rate();
 
-        match self
-            .backend
-            .tick(&mut self.display_buffer, &mut self.keypad_state)
-        {
-            Ok(_) => (),
-            Err(error) => {
-                return Err(FrontendError::Backend(error));
+        for _ in 0..pending_ticks.max(1.) as u128 {
+            match self
+                .backend
+                .tick(&mut self.display_buffer, &mut self.keypad_state)
+            {
+                Ok(true) => break,
+                Ok(false) => (),
+                Err(error) => {
+                    return Err(FrontendError::Backend(error));
+                }
             }
         }
+
+        self.last_tick = Some(time::Instant::now());
 
         if self.display_buffer.is_dirty() {
             self.update_texture()?;
