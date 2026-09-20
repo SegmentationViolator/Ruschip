@@ -20,16 +20,20 @@ pub mod chip8;
 mod error;
 mod instruction;
 pub mod interfaces;
+pub mod superchip;
 
 pub use error::{BackendError, BackendErrorKind};
 pub use instruction::Instruction;
 
-pub use chip8::FONT_SIZE as MAX_FONT_SIZE;
+pub use superchip::FONT_SIZE as MAX_FONT_SIZE;
 
-const TIMER_RATE: u128 = 1000 / 60;
+pub const REGISTER_COUNT: usize = 16;
+pub const TICK_RATE: f64 = 700.;
+const TIMER_RATE: f64 = 60.;
 
 pub enum Backend {
     Chip8(chip8::Backend),
+    SuperChip(superchip::Backend),
 }
 
 pub struct BackendOptions {
@@ -37,6 +41,12 @@ pub struct BackendOptions {
     pub increment_address: bool,
     pub quirky_jump: bool,
     pub reset_flag: bool,
+}
+
+pub enum ProgramState {
+    Running,
+    Halted,
+    Exited,
 }
 
 pub struct Timer {
@@ -60,6 +70,16 @@ impl Backend {
                     half_pixel_scrolling: false,
                 },
             ),
+            Self::SuperChip(..) => interfaces::display_buffer::DisplayBuffer::new(
+                [
+                    superchip::DISPLAY_BUFFER_WIDTH,
+                    superchip::DISPLAY_BUFFER_HEIGHT,
+                ],
+                interfaces::display_buffer::DisplayOptions {
+                    clip_sprites: true,
+                    half_pixel_scrolling: false,
+                },
+            ),
         }
     }
 
@@ -67,9 +87,11 @@ impl Backend {
         match font {
             Some(font) => match self {
                 Self::Chip8(backend) => backend.load_with_font(program, font),
+                Self::SuperChip(backend) => backend.load_with_font(program, font),
             },
             None => match self {
                 Self::Chip8(backend) => backend.load(program),
+                Self::SuperChip(backend) => backend.load(program),
             },
         }
     }
@@ -77,12 +99,14 @@ impl Backend {
     pub fn options_mut(&mut self) -> &mut BackendOptions {
         match self {
             Self::Chip8(backend) => &mut backend.options,
+            Self::SuperChip(backend) => backend.options_mut(),
         }
     }
 
     pub fn reset(&mut self) {
         match self {
             Self::Chip8(backend) => backend.reset(),
+            Self::SuperChip(backend) => backend.reset(),
         }
     }
 
@@ -90,21 +114,20 @@ impl Backend {
         &mut self,
         display_buffer: &mut interfaces::display_buffer::DisplayBuffer,
         keypad_state: &mut interfaces::keypad_state::KeypadState,
-    ) -> Result<bool, BackendError> {
+        persistent_storage: &mut [u8; REGISTER_COUNT],
+    ) -> Result<ProgramState, BackendError> {
         match self {
             Self::Chip8(backend) => backend.tick(display_buffer, keypad_state),
-        }
-    }
-
-    pub fn tick_rate(&self) -> f64 {
-        match self {
-            Self::Chip8(..) => chip8::TICK_RATE,
+            Self::SuperChip(backend) => {
+                backend.tick(display_buffer, keypad_state, persistent_storage)
+            }
         }
     }
 
     pub fn sound(&self) -> u8 {
         match self {
             Self::Chip8(backend) => backend.sound.get(),
+            Self::SuperChip(backend) => backend.sound(),
         }
     }
 }
@@ -117,7 +140,7 @@ impl Default for Timer {
 
 impl Timer {
     pub fn get(&self) -> u8 {
-        (self.value as u128).saturating_sub(self.instant.elapsed().as_millis() / TIMER_RATE) as u8
+        (self.value).saturating_sub((self.instant.elapsed().as_secs_f64() * TIMER_RATE) as u8)
     }
 
     pub fn new() -> Self {

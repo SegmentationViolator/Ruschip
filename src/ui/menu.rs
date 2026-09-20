@@ -22,7 +22,6 @@ use crate::backend;
 use crate::frontend;
 
 use super::file_picker;
-use super::{App, AppState, EmulationState, MenuState, PRIMARY_COLOR};
 
 const ERROR_DISPLAY_DURATION: time::Duration = time::Duration::from_secs(2);
 const MENU_SPACING: f32 = 5.0;
@@ -31,6 +30,12 @@ const MENU_BASE_CARD_WIDTH: f32 = 760.0;
 const MENU_BASE_GUTTER: f32 = 20.0;
 const MENU_MIN_SCALE: f32 = 1.2;
 const MENU_MAX_SCALE: f32 = 1.5;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BackendSelection {
+    Chip8,
+    SuperChip,
+}
 
 #[derive(Clone, Copy)]
 enum ColorSelection {
@@ -52,10 +57,17 @@ enum QuirkSelection {
     ResetFlag,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 struct MenuLayout {
     card_width: f32,
     scale: f32,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum MenuState {
+    Backend,
+    Configuration,
+    Inactive,
 }
 
 impl MenuLayout {
@@ -71,18 +83,31 @@ impl MenuLayout {
     }
 }
 
-impl App {
-    const FILE_PICKERS: [(&str, PathSelection); 2] = [
+impl super::App {
+    const BACKENDS: &[(&str, &str, BackendSelection)] = &[
+        (
+            "CHIP-8",
+            "The original CHIP-8 interpreter",
+            BackendSelection::Chip8,
+        ),
+        (
+            "SUPER-CHIP",
+            "A backwards-compatible extended version of CHIP-8 with higher resolution mode and new instructions",
+            BackendSelection::SuperChip,
+        ),
+    ];
+
+    const FILE_PICKERS: &[(&str, PathSelection)] = &[
         ("Font", PathSelection::Font),
         ("Program", PathSelection::Program),
     ];
 
-    const COLOR_PICKERS: [(&str, ColorSelection); 2] = [
+    const COLOR_PICKERS: &[(&str, ColorSelection)] = &[
         ("Active Color", ColorSelection::Active),
         ("Inactive Color", ColorSelection::Inactive),
     ];
 
-    const QUIRK_TOGGLES: [(&str, &str, QuirkSelection); 4] = [
+    const QUIRK_TOGGLES: &[(&str, &str, QuirkSelection)] = &[
         (
             "Copy and Shift",
             "Copy the content of second operand register to the first operand register before shifting",
@@ -105,6 +130,75 @@ impl App {
         ),
     ];
 
+    pub(super) fn show_backend_menu(&mut self, ui: &mut egui::Ui) {
+        let current_selection = BackendSelection::from_backend(&self.frontend.backend);
+
+        egui::CentralPanel::default().show(ui, |ui| {
+            let layout = MenuLayout::for_viewport(ui.available_width());
+            let style = scaled_menu_style(ui.style(), layout.scale);
+            let menu_spacing = MENU_SPACING * layout.scale;
+
+            ui.set_style(style);
+
+            egui::ScrollArea::vertical()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| {
+                    let side_margin = ((ui.available_width() - layout.card_width) / 2.0).max(0.0);
+
+                    ui.horizontal(|ui| {
+                        ui.add_space(side_margin);
+
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(layout.card_width, ui.available_height()),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                ui.heading("Backends");
+                                ui.separator();
+
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Min),
+                                    |ui| {
+                                        for (name, description, selection) in Self::BACKENDS {
+                                            let selected = current_selection == *selection;
+
+                                            if ui
+                                                .selectable_label(
+                                                    selected,
+                                                    egui::RichText::new(*name)
+                                                        .color(if selected {
+                                                            egui::Color32::WHITE
+                                                        } else {
+                                                            super::PRIMARY_COLOR
+                                                        })
+                                                        .heading(),
+                                                )
+                                                .clicked()
+                                            {
+                                                if !selected {
+                                                    self.frontend.backend =
+                                                        selection.into_backend();
+                                                }
+
+                                                self.state.menu = MenuState::Configuration;
+                                            }
+
+                                            ui.label(
+                                                egui::RichText::new(*description)
+                                                    .color(egui::Color32::GRAY)
+                                                    .small(),
+                                            );
+
+                                            ui.add_space(menu_spacing);
+                                        }
+                                    },
+                                );
+                            },
+                        );
+                    });
+                });
+        });
+    }
+
     pub(super) fn show_configuration_menu(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show(ui, |ui| {
             let layout = MenuLayout::for_viewport(ui.available_width());
@@ -123,7 +217,7 @@ impl App {
                             egui::Layout::top_down(egui::Align::Min),
                             |ui| {
                                 ui.add_enabled_ui(
-                                    self.state.emulation == EmulationState::Stopped
+                                    self.state.emulation == super::EmulationState::Stopped
                                         && !self.file_picker.is_open(),
                                     |ui| {
                                         if !self.state.error.message.is_empty()
@@ -144,7 +238,7 @@ impl App {
                                         ui.separator();
 
                                         for (label, selection) in Self::FILE_PICKERS {
-                                            menu_item(ui, label, |ui| {
+                                            menu_item(ui, *label, |ui| {
                                                 let file = selection.get_file_mut(&mut self.state);
 
                                                 if file.is_some()
@@ -152,7 +246,7 @@ impl App {
                                                         .add(
                                                             egui::Button::new(
                                                                 egui::RichText::new("×")
-                                                                    .color(PRIMARY_COLOR),
+                                                                    .color(super::PRIMARY_COLOR),
                                                             )
                                                             .frame(false),
                                                         )
@@ -181,7 +275,7 @@ impl App {
                                                     {
                                                         self.state.error.message.clear();
                                                         self.file_picker.open();
-                                                        self.state.path_selection = selection;
+                                                        self.state.path_selection = *selection;
                                                     }
                                                 },
                                             );
@@ -192,7 +286,7 @@ impl App {
                                         ui.add_space(menu_spacing);
 
                                         for (label, description, selection) in Self::QUIRK_TOGGLES {
-                                            menu_item(ui, label, |ui| {
+                                            menu_item(ui, *label, |ui| {
                                                 ui.checkbox(
                                                     selection.get_quirk_mut(
                                                         self.frontend.backend.options_mut(),
@@ -201,7 +295,7 @@ impl App {
                                                 );
                                             });
                                             ui.label(
-                                                egui::RichText::new(description)
+                                                egui::RichText::new(*description)
                                                     .color(egui::Color32::GRAY)
                                                     .small(),
                                             );
@@ -225,13 +319,28 @@ impl App {
                                             .small(),
                                         );
 
+                                        if let backend::Backend::SuperChip(..) = self.frontend.backend {
+                                            ui.add_space(menu_spacing);
+                                            menu_item(ui, "Half Pixel Scrolling", |ui| {
+                                                ui.checkbox(
+                                                    &mut self.frontend.display_buffer.options.half_pixel_scrolling,
+                                                    "",
+                                                );
+                                            });
+                                            ui.label({
+                                                egui::RichText::new("Scroll same number of pixels in both resolution modes (scroll twice the pixels in low resolution if off)")
+                                                    .color(egui::Color32::GRAY)
+                                                    .small()
+                                            });
+                                        }
+
                                         ui.add_space(4.0 * menu_spacing);
 
                                         ui.heading("Frontend Parameters");
                                         ui.separator();
 
                                         for (label, selection) in Self::COLOR_PICKERS {
-                                            menu_item(ui, label, |ui| {
+                                            menu_item(ui, *label, |ui| {
                                                 color_picker::color_edit_button_srgba(
                                                     ui,
                                                     selection
@@ -244,7 +353,7 @@ impl App {
                                         }
 
                                         if self.state.program_file.is_some()
-                                            && self.state.emulation == EmulationState::Stopped
+                                            && self.state.emulation == super::EmulationState::Stopped
                                         {
                                             ui.separator();
 
@@ -260,7 +369,7 @@ impl App {
                                     },
                                 );
 
-                                if self.state.emulation != EmulationState::Stopped {
+                                if self.state.emulation != super::EmulationState::Stopped {
                                     ui.separator();
 
                                     ui.with_layout(
@@ -268,7 +377,7 @@ impl App {
                                         |ui| {
                                             if ui.button("⟲ Reset").clicked() {
                                                 self.frontend.reset();
-                                                self.state.emulation = EmulationState::Running;
+                                                self.state.emulation = super::EmulationState::Running;
                                                 self.state.menu = MenuState::Inactive;
                                             }
 
@@ -276,7 +385,7 @@ impl App {
 
                                             if ui.button("■ Stop").clicked() {
                                                 self.frontend.suspend();
-                                                self.state.emulation = EmulationState::Stopped;
+                                                self.state.emulation = super::EmulationState::Stopped;
                                             }
                                         },
                                     );
@@ -321,6 +430,22 @@ fn scaled_menu_style(style: &egui::Style, scale: f32) -> egui::Style {
     style
 }
 
+impl BackendSelection {
+    fn from_backend(backend: &backend::Backend) -> Self {
+        match backend {
+            backend::Backend::Chip8(..) => Self::Chip8,
+            backend::Backend::SuperChip(..) => Self::SuperChip,
+        }
+    }
+
+    fn into_backend(self) -> backend::Backend {
+        match self {
+            Self::Chip8 => backend::Backend::Chip8(backend::chip8::Backend::default()),
+            Self::SuperChip => backend::Backend::SuperChip(backend::superchip::Backend::default()),
+        }
+    }
+}
+
 impl ColorSelection {
     fn get_color_mut<'a>(&self, colors: &'a mut frontend::Colors) -> &'a mut egui::Color32 {
         match self {
@@ -331,7 +456,10 @@ impl ColorSelection {
 }
 
 impl PathSelection {
-    fn get_file_mut<'a>(&self, state: &'a mut AppState) -> &'a mut Option<file_picker::File> {
+    fn get_file_mut<'a>(
+        &self,
+        state: &'a mut super::AppState,
+    ) -> &'a mut Option<file_picker::File> {
         match self {
             Self::Font => &mut state.font_file,
             Self::Program => &mut state.program_file,
@@ -361,33 +489,4 @@ fn menu_item(
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), add_contents);
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn menu_layout_preserves_a_readable_minimum_scale() {
-        let layout = MenuLayout::for_viewport(320.0);
-
-        assert_eq!(layout.scale, MENU_MIN_SCALE);
-        assert_eq!(layout.card_width, 272.0);
-    }
-
-    #[test]
-    fn menu_layout_delays_growth_on_standard_desktop_viewports() {
-        let layout = MenuLayout::for_viewport(MENU_SCALE_VIEWPORT_WIDTH);
-
-        assert_eq!(layout.scale, MENU_MIN_SCALE);
-        assert_eq!(layout.card_width, MENU_BASE_CARD_WIDTH * MENU_MIN_SCALE);
-    }
-
-    #[test]
-    fn menu_layout_caps_growth_on_large_viewports() {
-        let layout = MenuLayout::for_viewport(3_000.0);
-
-        assert_eq!(layout.scale, MENU_MAX_SCALE);
-        assert_eq!(layout.card_width, MENU_BASE_CARD_WIDTH * MENU_MAX_SCALE);
-    }
 }

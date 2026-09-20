@@ -18,15 +18,11 @@ use std::mem;
 
 use crate::defaults;
 
-use super::BackendError;
-use super::BackendErrorKind;
-use super::Instruction;
 use super::interfaces::{display_buffer, keypad_state};
 
 pub const DISPLAY_BUFFER_HEIGHT: usize = 32;
 pub const DISPLAY_BUFFER_WIDTH: usize = 64;
 pub const FONT_SIZE: usize = CHARACTER_SIZE * keypad_state::KEY_COUNT;
-pub const TICK_RATE: f64 = 1000. / 700.;
 
 pub(super) const CHARACTER_SIZE: usize = 5;
 const MEMORY_PADDING: usize = 512;
@@ -54,10 +50,10 @@ impl Backend {
     pub(super) fn execute(
         &mut self,
         index: usize,
-        instruction: Instruction,
+        instruction: super::Instruction,
         display_buffer: &mut display_buffer::DisplayBuffer,
         keypad_state: &mut keypad_state::KeypadState,
-    ) -> Result<bool, BackendError> {
+    ) -> Result<super::ProgramState, super::BackendError> {
         match instruction.operator_code() {
             0x0 => match instruction.operand_nnn() {
                 0x0E0 => {
@@ -67,9 +63,9 @@ impl Backend {
                 0x0EE => {
                     match self.stack.pop() {
                         None => {
-                            return Err(BackendError {
+                            return Err(super::BackendError {
                                 instruction: Some((index, Some(instruction))),
-                                kind: BackendErrorKind::StackUnderflow,
+                                kind: super::BackendErrorKind::StackUnderflow,
                             });
                         }
                         Some(address) => self.index = address as usize,
@@ -83,9 +79,9 @@ impl Backend {
             opcode @ (0x1 | 0x2) => {
                 if opcode == 2 {
                     if self.stack.len() == STACK_SIZE {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::StackOverflow,
+                            kind: super::BackendErrorKind::StackOverflow,
                         });
                     }
 
@@ -109,10 +105,10 @@ impl Backend {
                     0x9 if self.registers.general[instruction.operand_x() as usize]
                         != self.registers.general[instruction.operand_y() as usize] => {}
 
-                    _ => return Ok(false),
+                    _ => return Ok(super::ProgramState::Running),
                 }
 
-                self.index += mem::size_of::<Instruction>();
+                self.index += mem::size_of::<super::Instruction>();
             }
 
             0x6 => {
@@ -215,9 +211,9 @@ impl Backend {
                 }
 
                 _ => {
-                    return Err(BackendError {
+                    return Err(super::BackendError {
                         instruction: Some((index, Some(instruction))),
-                        kind: BackendErrorKind::UnrecognizedInstruction,
+                        kind: super::BackendErrorKind::UnrecognizedInstruction,
                     });
                 }
             },
@@ -240,11 +236,11 @@ impl Backend {
 
             0xD => {
                 if self.registers.address as usize + instruction.operand_n() as usize
-                    >= self.memory.len()
+                    > self.memory.len()
                 {
-                    return Err(BackendError {
+                    return Err(super::BackendError {
                         instruction: Some((index, Some(instruction))),
-                        kind: BackendErrorKind::MemoryOverflow,
+                        kind: super::BackendErrorKind::MemoryOverflow,
                     });
                 }
 
@@ -259,42 +255,42 @@ impl Backend {
 
                 self.registers.general[15] = (colliding_rows > 0) as u8;
 
-                return Ok(true);
+                return Ok(super::ProgramState::Halted);
             }
 
             0xE => match instruction.operand_nn() {
                 0x9E => {
                     let key = self.registers.general[instruction.operand_x() as usize] as usize;
                     if key >= keypad_state::KEY_COUNT {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::UnrecognizedKey,
+                            kind: super::BackendErrorKind::UnrecognizedKey,
                         });
                     }
 
                     if keypad_state.pressed(key) {
-                        self.index += mem::size_of::<Instruction>();
+                        self.index += mem::size_of::<super::Instruction>();
                     }
                 }
 
                 0xA1 => {
                     let key = self.registers.general[instruction.operand_x() as usize] as usize;
                     if key >= keypad_state::KEY_COUNT {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::UnrecognizedKey,
+                            kind: super::BackendErrorKind::UnrecognizedKey,
                         });
                     }
 
                     if !keypad_state.pressed(key) {
-                        self.index += mem::size_of::<Instruction>();
+                        self.index += mem::size_of::<super::Instruction>();
                     }
                 }
 
                 _ => {
-                    return Err(BackendError {
+                    return Err(super::BackendError {
                         instruction: Some((index, Some(instruction))),
-                        kind: BackendErrorKind::UnrecognizedInstruction,
+                        kind: super::BackendErrorKind::UnrecognizedInstruction,
                     });
                 }
             },
@@ -303,6 +299,10 @@ impl Backend {
                 0x07 => self.registers.general[instruction.operand_x() as usize] = self.delay.get(),
 
                 0x0A => {
+                    if keypad_state.request_update() {
+                        return Ok(super::ProgramState::Halted);
+                    }
+
                     match keypad_state.pressed_key() {
                         Some(key) => {
                             self.registers.general[instruction.operand_x() as usize] = key as u8;
@@ -311,8 +311,6 @@ impl Backend {
                             self.index = index;
                         }
                     }
-
-                    return Ok(true);
                 }
 
                 0x15 => self
@@ -333,9 +331,9 @@ impl Backend {
                         self.registers.general[instruction.operand_x() as usize] as usize;
 
                     if character_code >= keypad_state::KEY_COUNT {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::UnrecognizedSprite,
+                            kind: super::BackendErrorKind::UnrecognizedSprite,
                         });
                     }
 
@@ -344,9 +342,9 @@ impl Backend {
 
                 0x33 => {
                     if self.registers.address as usize + 2 >= self.memory.len() {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::MemoryOverflow,
+                            kind: super::BackendErrorKind::MemoryOverflow,
                         });
                     }
 
@@ -361,9 +359,9 @@ impl Backend {
                     let x = instruction.operand_x() as usize;
 
                     if self.registers.address as usize + x >= self.memory.len() {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((index, Some(instruction))),
-                            kind: BackendErrorKind::MemoryOverflow,
+                            kind: super::BackendErrorKind::MemoryOverflow,
                         });
                     }
 
@@ -381,9 +379,9 @@ impl Backend {
                     let x = instruction.operand_x() as usize;
 
                     if self.registers.address as usize + x >= self.memory.len() {
-                        return Err(BackendError {
+                        return Err(super::BackendError {
                             instruction: Some((self.index, Some(instruction))),
-                            kind: BackendErrorKind::MemoryOverflow,
+                            kind: super::BackendErrorKind::MemoryOverflow,
                         });
                     }
 
@@ -398,29 +396,29 @@ impl Backend {
                 }
 
                 _ => {
-                    return Err(BackendError {
+                    return Err(super::BackendError {
                         instruction: Some((index, Some(instruction))),
-                        kind: BackendErrorKind::UnrecognizedInstruction,
+                        kind: super::BackendErrorKind::UnrecognizedInstruction,
                     });
                 }
             },
 
             _ => {
-                return Err(BackendError {
+                return Err(super::BackendError {
                     instruction: Some((index, Some(instruction))),
-                    kind: BackendErrorKind::UnrecognizedInstruction,
+                    kind: super::BackendErrorKind::UnrecognizedInstruction,
                 });
             }
         }
 
-        Ok(false)
+        Ok(super::ProgramState::Running)
     }
 
-    pub fn load(&mut self, program: &[u8]) -> Result<(), BackendError> {
+    pub fn load(&mut self, program: &[u8]) -> Result<(), super::BackendError> {
         if program.len() > MEMORY_SIZE - MEMORY_PADDING {
-            return Err(BackendError {
+            return Err(super::BackendError {
                 instruction: None,
-                kind: BackendErrorKind::InvalidProgram,
+                kind: super::BackendErrorKind::InvalidProgram,
             });
         }
 
@@ -432,18 +430,22 @@ impl Backend {
         Ok(())
     }
 
-    pub fn load_with_font(&mut self, program: &[u8], font: &[u8]) -> Result<(), BackendError> {
+    pub fn load_with_font(
+        &mut self,
+        program: &[u8],
+        font: &[u8],
+    ) -> Result<(), super::BackendError> {
         if program.len() > MEMORY_SIZE - MEMORY_PADDING {
-            return Err(BackendError {
+            return Err(super::BackendError {
                 instruction: None,
-                kind: BackendErrorKind::InvalidProgram,
+                kind: super::BackendErrorKind::InvalidProgram,
             });
         }
 
         if font.len() < FONT_SIZE {
-            return Err(BackendError {
+            return Err(super::BackendError {
                 instruction: None,
-                kind: BackendErrorKind::InvalidFont,
+                kind: super::BackendErrorKind::InvalidFont,
             });
         }
 
@@ -487,25 +489,26 @@ impl Backend {
         &mut self,
         display_buffer: &mut display_buffer::DisplayBuffer,
         keyboard_state: &mut keypad_state::KeypadState,
-    ) -> Result<bool, BackendError> {
+    ) -> Result<super::ProgramState, super::BackendError> {
         if !self.loaded {
-            return Err(BackendError {
+            return Err(super::BackendError {
                 instruction: None,
-                kind: BackendErrorKind::ProgramNotLoaded,
+                kind: super::BackendErrorKind::ProgramNotLoaded,
             });
         }
 
         if self.index + 1 >= self.memory.len() {
-            return Err(BackendError {
+            return Err(super::BackendError {
                 instruction: Some((self.index, None)),
-                kind: BackendErrorKind::MemoryOverflow,
+                kind: super::BackendErrorKind::MemoryOverflow,
             });
         }
 
-        let instruction = Instruction::new([self.memory[self.index], self.memory[self.index + 1]]);
+        let instruction =
+            super::Instruction::new([self.memory[self.index], self.memory[self.index + 1]]);
 
         let last_index = self.index;
-        self.index += mem::size_of::<Instruction>();
+        self.index += mem::size_of::<super::Instruction>();
 
         self.execute(last_index, instruction, display_buffer, keyboard_state)
     }

@@ -39,7 +39,7 @@ pub struct App {
 struct AppState {
     emulation: EmulationState,
     error: ErrorMessage,
-    menu: MenuState,
+    menu: menu::MenuState,
     font_file: Option<file_picker::File>,
     program_file: Option<file_picker::File>,
     path_selection: menu::PathSelection,
@@ -57,17 +57,9 @@ enum EmulationState {
     Suspended,
 }
 
-#[derive(PartialEq, Eq)]
-enum MenuState {
-    Configuration,
-    Inactive,
-}
-
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.state.emulation != EmulationState::Stopped {
-            self.handle_input(ctx);
-        }
+        self.handle_input(ctx);
 
         if self.state.emulation != EmulationState::Running {
             return;
@@ -75,27 +67,42 @@ impl eframe::App for App {
 
         ctx.input(|input| self.frontend.keypad_state.update(input));
 
-        if let Err(error) = self.frontend.tick() {
-            if error.is_fatal() {
-                self.state.error.timestamp = time::Instant::now();
-                self.state.error.message.clear();
-                let _ = write!(self.state.error.message, "fatal error, {}", error);
-
+        match self.frontend.tick() {
+            Ok(backend::ProgramState::Exited) => {
                 self.frontend.suspend();
                 self.state.emulation = EmulationState::Stopped;
-                self.state.menu = MenuState::Configuration;
+                self.state.menu = menu::MenuState::Configuration;
             }
 
-            eprintln!("{}", error);
+            Err(error) => {
+                if error.is_fatal() {
+                    self.state.error.timestamp = time::Instant::now();
+                    self.state.error.message.clear();
+                    let _ = write!(self.state.error.message, "fatal error, {}", error);
+
+                    self.frontend.suspend();
+                    self.state.emulation = EmulationState::Stopped;
+                    self.state.menu = menu::MenuState::Configuration;
+                }
+
+                eprintln!("{}", error);
+            }
+
+            _ => (),
         }
 
         ctx.request_repaint();
     }
 
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, "registers", &self.frontend.persistent_storage);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         match self.state.menu {
-            MenuState::Configuration => return self.show_configuration_menu(ui),
-            MenuState::Inactive => (),
+            menu::MenuState::Backend => return self.show_backend_menu(ui),
+            menu::MenuState::Configuration => return self.show_configuration_menu(ui),
+            menu::MenuState::Inactive => (),
         }
 
         let available = ui.available_size();
@@ -116,20 +123,28 @@ impl eframe::App for App {
 impl App {
     fn handle_input(&mut self, ctx: &egui::Context) {
         ctx.input_mut(|input| {
-            if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
-                if self.state.menu == MenuState::Inactive {
-                    self.frontend.suspend();
-                    self.state.emulation = EmulationState::Suspended;
-                    self.state.menu = MenuState::Configuration;
-                    return;
+            if self.state.emulation == EmulationState::Stopped {
+                if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+                    self.state.menu = menu::MenuState::Backend;
                 }
 
-                self.state.emulation = EmulationState::Running;
-                self.state.menu = MenuState::Inactive;
                 return;
             }
 
-            if self.state.menu == MenuState::Inactive
+            if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+                if self.state.menu == menu::MenuState::Inactive {
+                    self.frontend.suspend();
+                    self.state.emulation = EmulationState::Suspended;
+                    self.state.menu = menu::MenuState::Configuration;
+                } else {
+                    self.state.emulation = EmulationState::Running;
+                    self.state.menu = menu::MenuState::Inactive;
+                }
+
+                return;
+            }
+
+            if self.state.menu == menu::MenuState::Inactive
                 && input.consume_key(egui::Modifiers::NONE, egui::Key::Space)
             {
                 if self.state.emulation == EmulationState::Running {
@@ -148,6 +163,10 @@ impl App {
     ) -> Result<Box<dyn eframe::App>, Box<dyn Error + Send + Sync>> {
         let backend = backend::Backend::default();
         let display_buffer = backend.create_display_buffer();
+        let persistent_storage = cc
+            .storage
+            .and_then(|storage| eframe::get_value(storage, "registers"))
+            .unwrap_or([0u8; backend::REGISTER_COUNT]);
 
         cc.egui_ctx.global_style_mut(|style| {
             style.spacing.button_padding.y = 8.0;
@@ -181,7 +200,8 @@ impl App {
             style.visuals.window_fill = SECONDARY_COLOR;
         });
 
-        let frontend = frontend::Frontend::new(&cc.egui_ctx, backend, display_buffer)?;
+        let frontend =
+            frontend::Frontend::new(&cc.egui_ctx, backend, display_buffer, persistent_storage)?;
 
         let state = AppState {
             emulation: EmulationState::Stopped,
@@ -189,7 +209,7 @@ impl App {
                 message: String::with_capacity(128),
                 timestamp: time::Instant::now(),
             },
-            menu: MenuState::Configuration,
+            menu: menu::MenuState::Backend,
             font_file: None,
             program_file: None,
             path_selection: menu::PathSelection::Font,
@@ -228,6 +248,6 @@ impl App {
         };
 
         self.state.emulation = EmulationState::Running;
-        self.state.menu = MenuState::Inactive;
+        self.state.menu = menu::MenuState::Inactive;
     }
 }

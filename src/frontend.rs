@@ -45,6 +45,7 @@ pub struct Frontend {
     display_texture: egui::TextureHandle,
     pub keypad_state: keypad_state::KeypadState,
     last_tick: Option<time::Instant>,
+    pub persistent_storage: [u8; backend::REGISTER_COUNT],
 }
 
 impl Colors {
@@ -66,6 +67,7 @@ impl Frontend {
         ctx: &egui::Context,
         backend: backend::Backend,
         mut display_buffer: display_buffer::DisplayBuffer,
+        persistent_storage: [u8; backend::REGISTER_COUNT],
     ) -> Result<Self, FrontendError> {
         #[cfg(target_arch = "wasm32")]
         let audio = audio::web::WebAudio::new().map_err(FrontendError::Audio)?;
@@ -89,6 +91,7 @@ impl Frontend {
             display_buffer,
             keypad_state: keypad_state::KeypadState::new(),
             last_tick: None,
+            persistent_storage,
         })
     }
 
@@ -103,34 +106,45 @@ impl Frontend {
         self.last_tick = None;
     }
 
-    pub fn tick(&mut self) -> Result<(), FrontendError> {
+    pub fn tick(&mut self) -> Result<backend::ProgramState, FrontendError> {
         self.audio.set_enabled(self.backend.sound() > 0);
         let pending_ticks = self
             .last_tick
-            .map(|instant| instant.elapsed().as_millis())
-            .unwrap_or(1000) as f64
-            / self.backend.tick_rate();
+            .map(|instant| instant.elapsed().as_secs_f64())
+            .unwrap_or(1.)
+            * backend::TICK_RATE;
 
-        for _ in 0..pending_ticks.max(1.) as u128 {
-            match self
-                .backend
-                .tick(&mut self.display_buffer, &mut self.keypad_state)
-            {
-                Ok(true) => break,
-                Ok(false) => (),
+        let mut program_state = Ok(backend::ProgramState::Running);
+
+        for _ in 0..pending_ticks as u128 {
+            match self.backend.tick(
+                &mut self.display_buffer,
+                &mut self.keypad_state,
+                &mut self.persistent_storage,
+            ) {
+                Ok(backend::ProgramState::Running) => (),
+
+                Ok(state) => {
+                    program_state = Ok(state);
+                    break;
+                }
+
                 Err(error) => {
-                    return Err(FrontendError::Backend(error));
+                    program_state = Err(FrontendError::Backend(error));
+                    break;
                 }
             }
         }
 
-        self.last_tick = Some(time::Instant::now());
+        if pending_ticks > 0. {
+            self.last_tick = Some(time::Instant::now());
+        }
 
         if self.display_buffer.is_dirty() {
             self.update_texture()?;
         }
 
-        Ok(())
+        program_state
     }
 
     pub fn update_texture(&mut self) -> Result<(), FrontendError> {

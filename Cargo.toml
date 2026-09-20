@@ -1,6 +1,6 @@
 [package]
 name = "ruschip"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Segmentation Violator <segmentationviolator@proton.me>"]
 edition = "2024"
 description = "a multi-variant CHIP-8 emulator"
@@ -14,7 +14,7 @@ rfd = "0.17"
 web-time = "1.1.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.36", default-features = false, features = ["wayland"] }
+eframe = { version = "0.36", default-features = false, features = ["persistence", "wayland"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rodio = { version = "0.22", default-features = false, features = ["playback"] }

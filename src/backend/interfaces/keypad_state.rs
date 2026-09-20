@@ -20,8 +20,10 @@ use crate::defaults;
 pub const KEY_COUNT: usize = 16; // 0..=F
 
 pub struct KeypadState {
-    state: [bool; KEY_COUNT],
     last_state: [bool; KEY_COUNT],
+    state: [bool; KEY_COUNT],
+    update_ready: bool,
+    update_requested: bool,
 }
 
 impl Default for KeypadState {
@@ -35,6 +37,8 @@ impl KeypadState {
         Self {
             state: [false; _],
             last_state: [false; _],
+            update_ready: false,
+            update_requested: false,
         }
     }
 
@@ -48,10 +52,17 @@ impl KeypadState {
     }
 
     pub fn update(&mut self, input: &egui::InputState) {
+        self.update_ready = self.update_requested;
         self.last_state = self.state;
 
         for i in 0..KEY_COUNT {
             self.state[i] = input.key_down(defaults::KEY_MAP[i]);
         }
+    }
+
+    pub fn request_update(&mut self) -> bool {
+        self.update_ready = self.update_requested && self.update_ready;
+        self.update_requested = !self.update_ready;
+        self.update_ready
     }
 }
