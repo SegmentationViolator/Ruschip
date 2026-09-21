@@ -177,6 +177,10 @@ impl super::App {
                                                 if !selected {
                                                     self.frontend.backend =
                                                         selection.into_backend();
+                                                    self.frontend.display_buffer = self
+                                                        .frontend
+                                                        .backend
+                                                        .create_display_buffer();
                                                 }
 
                                                 self.state.menu = MenuState::Configuration;
