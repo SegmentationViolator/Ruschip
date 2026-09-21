@@ -19,7 +19,6 @@ use std::ptr;
 use bitvec::view::BitViewSized;
 
 pub struct DisplayBuffer {
-    aspect_ratio: f32,
     #[cfg(target_arch = "wasm32")]
     buffer: Vec<bitvec::vec::BitVec<u32, bitvec::order::Msb0>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -37,7 +36,7 @@ pub struct DisplayOptions {
 
 impl DisplayBuffer {
     pub fn aspect_ratio(&self) -> f32 {
-        self.aspect_ratio
+        self.size[0] as f32 / self.size[1] as f32
     }
 
     pub fn clear(&mut self) {
@@ -138,7 +137,6 @@ impl DisplayBuffer {
 
     pub fn new(size: [usize; 2], options: DisplayOptions) -> Self {
         Self {
-            aspect_ratio: size[0] as f32 / size[1] as f32,
             buffer: vec![bitvec::vec::BitVec::repeat(false, size[0]); size[1]],
             size,
             dirty: false,

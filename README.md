@@ -6,8 +6,9 @@
 
 ## Features
 
-- Supports multiple variants (WIP)
-- Supports most—if not all—of the quirks, and they can be toggled
+- Supports multiple variants
+- Supports most&mdash;if not all&mdash;of the quirks, and they can be toggled
+- Runs on native platforms and the web
 - Supports customization of display colors
 - Supports the loading of custom CHIP-8 fonts
 
@@ -17,6 +18,15 @@
 
 - Runs @ ~700 instructions per second
 - Stack allows at most 12 elements
+
+### SUPER-CHIP
+
+- Runs @ ~700 instructions per second
+- Stack allows at most 12 elements
+- Starts in 64×32 low-resolution mode
+- Clears display on mode change
+- Supports `FX75` and `FX85` persistent register storage via file-backed storage on native platforms and browser local storage on the web
+- Supports program exit via `00FD`
 
 ## References
 
