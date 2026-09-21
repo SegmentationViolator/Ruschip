@@ -200,7 +200,7 @@
                     // {
                         cargoArtifacts = web.${system}.cargoArtifacts;
                         trunkExtraBuildArgs = "--minify=true";
-                        inherit (web.${system}.pkgs) wasm-bindgen-cli_0_2_127;
+                        wasm-bindgen-cli = web.${system}.pkgs.wasm-bindgen-cli_0_2_127;
                     }
                 );
             });
