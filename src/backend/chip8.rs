@@ -223,7 +223,7 @@ impl Backend {
             0xB => {
                 self.index = if self.options.quirky_jump {
                     self.registers.general[instruction.operand_x() as usize] as usize
-                        + instruction.operand_nn() as usize
+                        + instruction.operand_nnn() as usize
                 } else {
                     self.registers.general[0] as usize + instruction.operand_nnn() as usize
                 }
@@ -268,7 +268,7 @@ impl Backend {
                         });
                     }
 
-                    if keypad_state.pressed(key) {
+                    if keypad_state.down(key) {
                         self.index += mem::size_of::<super::Instruction>();
                     }
                 }
@@ -282,7 +282,7 @@ impl Backend {
                         });
                     }
 
-                    if !keypad_state.pressed(key) {
+                    if !keypad_state.down(key) {
                         self.index += mem::size_of::<super::Instruction>();
                     }
                 }
@@ -299,7 +299,8 @@ impl Backend {
                 0x07 => self.registers.general[instruction.operand_x() as usize] = self.delay.get(),
 
                 0x0A => {
-                    if keypad_state.request_update() {
+                    if !keypad_state.request_update() {
+                        self.index = index;
                         return Ok(super::ProgramState::Halted);
                     }
 

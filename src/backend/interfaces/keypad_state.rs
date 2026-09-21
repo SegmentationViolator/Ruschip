@@ -43,7 +43,7 @@ impl KeypadState {
     }
 
     #[inline]
-    pub fn pressed(&self, key: usize) -> bool {
+    pub fn down(&self, key: usize) -> bool {
         self.state[key]
     }
 
@@ -61,8 +61,9 @@ impl KeypadState {
     }
 
     pub fn request_update(&mut self) -> bool {
-        self.update_ready = self.update_requested && self.update_ready;
-        self.update_requested = !self.update_ready;
-        self.update_ready
+        self.update_requested = !self.update_requested || !self.update_ready;
+        self.update_ready = false;
+
+        !self.update_requested
     }
 }
