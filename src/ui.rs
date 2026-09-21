@@ -106,17 +106,34 @@ impl eframe::App for App {
         }
 
         let available = ui.available_size();
-        let buffer_ratio = self.frontend.display_buffer.aspect_ratio();
+        let resolution = self.frontend.display_buffer.size();
 
-        let size = if available.x / available.y <= buffer_ratio {
-            egui::vec2(available.x, available.x / buffer_ratio)
-        } else {
-            egui::vec2(available.y * buffer_ratio, available.y)
-        };
+        let scale = (available.x / resolution[0] as f32)
+            .min(available.y / resolution[1] as f32)
+            .floor()
+            .max(1.0);
 
-        ui.centered_and_justified(|ui| {
-            ui.add(egui::Image::new((self.display_texture, size)));
-        });
+        let size = egui::vec2(
+            resolution[0] as f32 * scale,
+            resolution[1] as f32 * scale,
+        );
+
+        ui.painter()
+            .rect_filled(ui.max_rect(), 0.0, self.frontend.colors.inactive);
+
+        let rect = ui.max_rect();
+        let center = rect.center();
+
+        let min = egui::pos2(
+            (center.x - size.x / 2.0).round(),
+            (center.y - size.y / 2.0).round(),
+        );
+
+        ui.put(
+            egui::Rect::from_min_size(min, size),
+            egui::Image::new((self.display_texture, size))
+                .texture_options(egui::TextureOptions::NEAREST),
+        );
     }
 }
 
@@ -124,7 +141,9 @@ impl App {
     fn handle_input(&mut self, ctx: &egui::Context) {
         ctx.input_mut(|input| {
             if self.state.emulation == EmulationState::Stopped {
-                if input.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+                if !self.file_picker.is_open()
+                    && input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
+                {
                     self.state.menu = menu::MenuState::Backend;
                 }
 
