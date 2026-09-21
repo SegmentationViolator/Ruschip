@@ -91,7 +91,7 @@
                         localSystem = system;
                         crossSystem = {
                             config = "x86_64-w64-mingw32";
-                            libc = "msvcrt";
+                            libc = "ucrt";
                         };
                     };
 
