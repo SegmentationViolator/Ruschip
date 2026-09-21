@@ -4,7 +4,7 @@ use crate::backend::{self, interfaces::keypad_state};
 use crate::frontend;
 use crate::ui;
 
-pub const BACKEND_FONT: [u8; backend::MAX_FONT_SIZE] = [
+pub const BACKEND_FONT: &[u8; backend::MAX_FONT_SIZE] = &[
     // LOW-RES
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -40,7 +40,7 @@ pub const COLORS: frontend::Colors = frontend::Colors {
     inactive: egui::Color32::BLACK,
 };
 
-pub const KEY_MAP: [egui::Key; keypad_state::KEY_COUNT] = [
+pub const KEY_MAP: &[egui::Key; keypad_state::KEY_COUNT] = &[
     egui::Key::X,    // 0
     egui::Key::Num1, // 1
     egui::Key::Num2, // 2

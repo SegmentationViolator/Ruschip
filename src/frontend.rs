@@ -14,6 +14,7 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use bitvec::view::BitViewSized;
 use eframe::egui;
 use web_time as time;
 
@@ -27,6 +28,15 @@ mod audio;
 mod error;
 
 pub use error::FrontendError;
+
+const PAUSE_ICON: &[u8] = &[0x00, 0x50, 0x50, 0x00];
+
+const PAUSE_ICON_WIDTH: usize = 5;
+
+const PAUSE_ICON_TARGET_RESOLUTION: [usize; 2] = [
+    backend::chip8::DISPLAY_BUFFER_WIDTH,
+    backend::chip8::DISPLAY_BUFFER_HEIGHT,
+];
 
 #[derive(Clone, Copy)]
 pub struct Colors {
@@ -46,6 +56,7 @@ pub struct Frontend {
     pub keypad_state: keypad_state::KeypadState,
     last_tick: Option<time::Instant>,
     pub persistent_storage: [u8; backend::REGISTER_COUNT],
+    suspended: bool,
 }
 
 impl Colors {
@@ -92,31 +103,34 @@ impl Frontend {
             keypad_state: keypad_state::KeypadState::new(),
             last_tick: None,
             persistent_storage,
+            suspended: false,
         })
     }
 
     pub fn reset(&mut self) {
-        self.backend.reset();
-        self.display_buffer.clear();
+        self.backend.reset(&mut self.display_buffer);
         self.suspend();
+        self.update_texture();
     }
 
     pub fn suspend(&mut self) {
         self.audio.set_enabled(false);
         self.last_tick = None;
+        self.suspended = true;
+        self.update_texture();
     }
 
     pub fn tick(&mut self) -> Result<backend::ProgramState, FrontendError> {
         self.audio.set_enabled(self.backend.sound() > 0);
-        let pending_ticks = self
+        let pending_ticks = (self
             .last_tick
             .map(|instant| instant.elapsed().as_secs_f64())
             .unwrap_or(1.)
-            * backend::TICK_RATE;
+            * backend::TICK_RATE) as u128;
 
         let mut program_state = Ok(backend::ProgramState::Running);
 
-        for _ in 0..pending_ticks as u128 {
+        for _ in 0..pending_ticks {
             match self.backend.tick(
                 &mut self.display_buffer,
                 &mut self.keypad_state,
@@ -136,29 +150,53 @@ impl Frontend {
             }
         }
 
-        if pending_ticks > 0. {
+        if pending_ticks > 0 {
             self.last_tick = Some(time::Instant::now());
         }
 
-        if self.display_buffer.is_dirty() {
-            self.update_texture()?;
+        if self.display_buffer.is_dirty() || self.suspended {
+            self.suspended = false;
+            self.update_texture();
         }
 
         program_state
     }
 
-    pub fn update_texture(&mut self) -> Result<(), FrontendError> {
-        let pixels: Vec<egui::Color32> = self
+    pub fn update_texture(&mut self) {
+        let mut pixels: Vec<egui::Color32> = self
             .display_buffer
             .flattened()
             .map(|pixel| self.colors.get(pixel))
             .collect();
 
+        let size = self.display_buffer.size();
+
+        if self.suspended {
+            let scale = (size[0] / PAUSE_ICON_TARGET_RESOLUTION[0])
+                .min(size[1] / PAUSE_ICON_TARGET_RESOLUTION[1])
+                .max(1);
+
+            for (y, bits) in PAUSE_ICON.iter().enumerate() {
+                for (x, bit) in bits
+                    .into_bitarray::<bitvec::order::Msb0>()
+                    .iter()
+                    .by_vals()
+                    .take(PAUSE_ICON_WIDTH)
+                    .enumerate()
+                {
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            pixels[(y * scale + dy) * size[0] + x * scale + dx] =
+                                self.colors.get(bit);
+                        }
+                    }
+                }
+            }
+        }
+
         self.display_texture.set(
-            egui::ColorImage::new(self.display_buffer.size(), pixels),
+            egui::ColorImage::new(size, pixels),
             egui::TextureOptions::NEAREST,
         );
-
-        Ok(())
     }
 }
