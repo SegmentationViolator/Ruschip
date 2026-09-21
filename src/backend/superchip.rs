@@ -61,12 +61,12 @@ impl Backend {
             }
 
             0x0 if instruction.operand_nnn() == 0x0FE => {
-                display_buffer.halve_resolution = true;
                 display_buffer.clear();
+                display_buffer.halve_resolution = true;
             }
             0x0 if instruction.operand_nnn() == 0x0FF => {
-                display_buffer.halve_resolution = false;
                 display_buffer.clear();
+                display_buffer.halve_resolution = false;
             }
 
             0xD => {

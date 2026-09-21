@@ -66,20 +66,25 @@ impl Backend {
             Self::Chip8(..) => interfaces::display_buffer::DisplayBuffer::new(
                 [chip8::DISPLAY_BUFFER_WIDTH, chip8::DISPLAY_BUFFER_HEIGHT],
                 interfaces::display_buffer::DisplayOptions {
-                    clip_sprites: false,
-                    half_pixel_scrolling: false,
-                },
-            ),
-            Self::SuperChip(..) => interfaces::display_buffer::DisplayBuffer::new(
-                [
-                    superchip::DISPLAY_BUFFER_WIDTH,
-                    superchip::DISPLAY_BUFFER_HEIGHT,
-                ],
-                interfaces::display_buffer::DisplayOptions {
                     clip_sprites: true,
                     half_pixel_scrolling: false,
                 },
             ),
+            Self::SuperChip(..) => {
+                let mut display_buffer = interfaces::display_buffer::DisplayBuffer::new(
+                    [
+                        superchip::DISPLAY_BUFFER_WIDTH,
+                        superchip::DISPLAY_BUFFER_HEIGHT,
+                    ],
+                    interfaces::display_buffer::DisplayOptions {
+                        clip_sprites: true,
+                        half_pixel_scrolling: false,
+                    },
+                );
+                display_buffer.halve_resolution = true;
+
+                display_buffer
+            }
         }
     }
 
@@ -103,11 +108,15 @@ impl Backend {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, display_buffer: &mut interfaces::display_buffer::DisplayBuffer) {
         match self {
             Self::Chip8(backend) => backend.reset(),
-            Self::SuperChip(backend) => backend.reset(),
+            Self::SuperChip(backend) => {
+                backend.reset();
+                display_buffer.halve_resolution = true;
+            }
         }
+        display_buffer.clear();
     }
 
     pub fn tick(
